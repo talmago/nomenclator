@@ -1,0 +1,100 @@
+[project]
+name = "nomenclator"
+version = "0.1.0"
+description = "Production-grade library for explainable HS code classification using structured retrieval and LLM reasoning."
+authors = [
+    {name = "Tal Almagor",email = "almagoric@gmail.com"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Intended Audience :: Information Technology",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Software Development :: Libraries",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.13,<3.15"
+dependencies = [
+    "dspy-ai (>=3.2.1,<4.0.0)",
+    "pydantic (>=2.13.4,<3.0.0)",
+    "httpx (>=0.28.1,<0.29.0)",
+    "beautifulsoup4 (>=4.15.0,<5.0.0)",
+    "pypdf (>=6.14.2,<7.0.0)",
+    "bm25s (>=0.3.9,<0.4.0)",
+    "model2vec (>=0.8.2,<0.9.0)",
+    "vicinity (>=0.4.4,<0.5.0)"
+]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+dev = [
+    "pytest (>=9.1.1,<10.0.0)",
+    "pytest-asyncio (>=1.4.0,<2.0.0)",
+    "pytest-cov (>=7.1.0,<8.0.0)",
+    "ruff (>=0.15.21,<0.16.0)",
+    "mypy (>=2.2.0,<3.0.0)",
+    "pre-commit (>=4.6.0,<5.0.0)"
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+exclude = [
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "build",
+    "dist",
+]
+
+[tool.ruff.lint]
+select = [
+    # Pyflakes
+    "F",
+    # pycodestyle
+    "E",
+    "W",
+    # isort
+    "I",
+    # pyupgrade
+    "UP",
+    # flake8-bugbear
+    "B",
+    # flake8-comprehensions
+    "C4",
+    # flake8-simplify
+    "SIM",
+    # Ruff-specific rules
+    "RUF",
+]
+
+ignore = [
+    "B905",  # zip() without explicit strict=
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["nomenclator"]
+combine-as-imports = true
+force-sort-within-sections = true
+split-on-trailing-comma = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+docstring-code-format = true
