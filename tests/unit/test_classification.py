@@ -10,6 +10,7 @@ from nomenclator.agent import (
 )
 from nomenclator.exceptions import (
     HSClassificationPipelineError,
+    HSInitializationError,
     HSNoCandidatesFoundError,
 )
 from nomenclator.models.classification import (
@@ -18,7 +19,7 @@ from nomenclator.models.classification import (
 )
 from nomenclator.models.result import HSClassificationResult
 from nomenclator.models.tree import HSDocumentRef, HSSection
-from nomenclator.usage import calc_usage
+from nomenclator.usage import calc_usage, ensure_dspy_lm
 
 
 @pytest.fixture
@@ -39,7 +40,8 @@ def agent() -> HSClassificationAgent:
     agent._research_analyst = MagicMock()
     agent._classification_analyst = MagicMock()
 
-    return agent
+    with patch("nomenclator.agent.ensure_dspy_lm"):
+        yield agent
 
 
 def _mock_chapter(
@@ -96,6 +98,79 @@ def _patch_headings(
         "_retrieve_headings",
         return_value=headings_by_chapter,
     )
+
+
+def test_ensure_dspy_lm_requires_configured_lm() -> None:
+    """Missing DSPy LM configuration should raise HSInitializationError."""
+
+    with (
+        patch("nomenclator.agent.dspy.settings") as settings,
+        pytest.raises(HSInitializationError) as exc_info,
+    ):
+        settings.lm = None
+        ensure_dspy_lm()
+
+    assert "language model is not configured" in str(exc_info.value)
+
+
+def test_ensure_dspy_lm_rejects_string_lm() -> None:
+    """A bare model string must not be accepted as a configured LM."""
+
+    with (
+        patch("nomenclator.agent.dspy.settings") as settings,
+        pytest.raises(HSInitializationError) as exc_info,
+    ):
+        settings.lm = "openai/gpt-4.1-mini"
+        ensure_dspy_lm()
+
+    assert "must be a dspy.LM instance, not a string" in str(exc_info.value)
+
+
+def test_ensure_dspy_lm_rejects_non_base_lm() -> None:
+    """Non-BaseLM values must not be accepted as a configured LM."""
+
+    with (
+        patch("nomenclator.agent.dspy.settings") as settings,
+        pytest.raises(HSInitializationError) as exc_info,
+    ):
+        settings.lm = object()
+        ensure_dspy_lm()
+
+    assert "must be an instance of dspy.BaseLM" in str(exc_info.value)
+
+
+def test_ensure_dspy_lm_accepts_base_lm() -> None:
+    """A configured BaseLM instance should pass the initialization check."""
+
+    import dspy
+
+    class _FakeLM(dspy.BaseLM):
+        def __init__(self) -> None:
+            pass
+
+        def __call__(self, *args, **kwargs):
+            return []
+
+    with patch("nomenclator.agent.dspy.settings") as settings:
+        settings.lm = _FakeLM()
+        ensure_dspy_lm()
+
+
+def test_classify_requires_dspy_lm() -> None:
+    """classify() should fail early when DSPy LM is not configured."""
+
+    agent = HSClassificationAgent.__new__(HSClassificationAgent)
+    agent._product_analyst = MagicMock()
+
+    with (
+        patch("nomenclator.agent.dspy.settings") as settings,
+        pytest.raises(HSInitializationError) as exc_info,
+    ):
+        settings.lm = None
+        agent.classify("lithium battery pack")
+
+    assert "language model is not configured" in str(exc_info.value)
+    agent._product_analyst.assert_not_called()
 
 
 def test_agent_pipeline(

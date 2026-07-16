@@ -1,3 +1,6 @@
+import dspy
+
+from nomenclator.exceptions import HSInitializationError
 from nomenclator.models.usage import TokenUsage
 
 
@@ -34,3 +37,35 @@ def calc_usage(
         usage.total_tokens = usage.prompt_tokens + usage.completion_tokens
 
     return usage
+
+
+def ensure_dspy_lm() -> None:
+    """Raise if DSPy has no usable language model configured.
+
+    The classification pipeline's LLM stages (Product Analyst, Research
+    Analyst, Classification Analyst) read ``dspy.settings.lm`` at call time.
+    Failing early with a clear initialization error avoids wrapping a missing
+    LM configuration as a product-analysis failure.
+    """
+
+    lm = dspy.settings.lm
+
+    if lm is None:
+        raise HSInitializationError(
+            "DSPy language model is not configured. "
+            "Call dspy.configure(lm=dspy.LM(...)) before classify(), "
+            "e.g. dspy.configure(lm=dspy.LM('openai/gpt-4.1-mini'))."
+        )
+
+    if isinstance(lm, str):
+        raise HSInitializationError(
+            "DSPy language model must be a dspy.LM instance, not a string. "
+            f"Use dspy.configure(lm=dspy.LM('{lm}')) instead of "
+            f"dspy.configure(lm='{lm}')."
+        )
+
+    if not isinstance(lm, dspy.BaseLM):
+        raise HSInitializationError(
+            "DSPy language model must be an instance of dspy.BaseLM, "
+            f"got {type(lm).__name__}."
+        )

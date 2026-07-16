@@ -114,6 +114,7 @@ from nomenclator.retrieval import Retriever
 from nomenclator.signatures.classification_analyst import ClassificationAnalystSignature
 from nomenclator.signatures.product_analyst import ProductAnalystSignature
 from nomenclator.signatures.research_analyst import ResearchAnalystSignature
+from nomenclator.usage import ensure_dspy_lm
 
 
 class ProductAnalyst(dspy.Module):
@@ -405,7 +406,12 @@ class HSClassificationAgent:
             code candidates (``.candidates``) and the intermediate artifacts
             from each upstream stage (facts, keywords, retrieved chapters,
             and navigation).
+
+        Raises:
+            HSInitializationError: If no DSPy language model is configured.
         """
+
+        ensure_dspy_lm()
 
         # --------------------------------------------------
         # Step 1: Product Analyst
