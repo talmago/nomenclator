@@ -108,13 +108,49 @@ Token usage
   Estimated cost:    $0.00896
 ```
 
-The pipeline performs the following steps:
+## How it works?
 
-1. Extract structured product facts.
-2. Retrieve relevant HS chapters using hybrid semantic and lexical search.
-3. Rank the retrieved chapters.
-4. Analyze chapter notes and headings.
-5. Produce ranked HS code candidates.
+```
+Q: "Men's cotton knitted shirts"
+        │
+        ▼
+┌─ Product Analyst ─────────────────────────────────────┐
+│  normalized: "men's cotton knitted shirts"            │
+│  category:   apparel                                  │
+│  attrs:      type=shirt · material=cotton · knit      │
+│  keywords:   [men's shirts, cotton, knitted, apparel] │
+└───────────────────────────┬───────────────────────────┘
+                            │
+                            ▼
+┌─ Nomenclature Retriever ──────────────────────────────┐
+│  hybrid search → candidate chapters                   │
+│    ch.61  Articles of apparel, knitted or crocheted   │
+│    ch.62  Articles of apparel, not knitted…           │
+│    …                                                  │
+└───────────────────────────┬───────────────────────────┘
+                            │
+                            ▼
+┌─ Research Analyst ────────────────────────────────────┐
+│  ranked pathways                                      │
+│    1. ch.61  (knitted apparel — primary)              │
+│    2. ch.62  (woven apparel — secondary / contrast)   │
+└───────────────────────────┬───────────────────────────┘
+                            │
+                            ▼
+┌─ Classification Context Builder ──────────────────────┐
+│  compact context per shortlisted chapter              │
+│    ch.61  notes + heading 61.05 (men's knitted shirts)│
+│    ch.62  notes + heading 62.05 (men's woven shirts)  │
+└───────────────────────────┬───────────────────────────┘
+                            │
+                            ▼
+┌─ Classification Analyst ──────────────────────────────┐
+│  1. 6105.10  Men's or boys' shirts, knitted, of cotton│
+│     score 1.00 · chapter 61                           │
+│  2. 6205.20  Men's or boys' shirts of cotton          │
+│     score 0.30 · chapter 62                           │
+└───────────────────────────────────────────────────────┘
+```
 
 ## Development
 

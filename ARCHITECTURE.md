@@ -15,26 +15,49 @@ to be evaluated independently.
 
 ## Pipeline
 
-```mermaid
-flowchart TD
-    A["📦 Raw product description"]
-
-    B["🔎 Product Analyst<br/>Extract structured product facts"]
-    C["📋 Product facts<br/>description · attributes · keywords"]
-
-    D["🧭 Nomenclature Retriever<br/>Semantic + BM25 search"]
-    E["📚 Candidate HS chapters"]
-
-    F["🧠 Research Analyst<br/>Evaluate classification pathways"]
-    G["📖 Ranked chapter candidates"]
-
-    H["🧩 Classification Context Builder<br/>Global heading-chunk retrieval"]
-    I["📄 Compact chapter context<br/>notes + selected headings"]
-
-    J["⚖️ Classification Analyst<br/>Apply HS rules and reasoning"]
-    K["✅ HS code candidates"]
-
-    A --> B --> C --> D --> E --> F --> G --> H --> I --> J --> K
+```
+Raw product description
+        │
+        ▼
+┌───────────────────────┐
+│   Product Analyst     │  extract structured facts
+└───────────┬───────────┘
+            │
+            ▼
+   product facts (description · attributes · keywords)
+            │
+            ▼
+┌───────────────────────┐
+│ Nomenclature Retriever│  semantic + BM25 (RRF)
+└───────────┬───────────┘
+            │
+            ▼
+   candidate HS chapters
+            │
+            ▼
+┌───────────────────────┐
+│   Research Analyst    │  evaluate classification pathways
+└───────────┬───────────┘
+            │
+            ▼
+   ranked chapter candidates
+            │
+            ▼
+┌───────────────────────┐
+│ Classification Context│  global heading-chunk retrieval
+│        Builder        │
+└───────────┬───────────┘
+            │
+            ▼
+   compact chapter context (notes + selected headings)
+            │
+            ▼
+┌───────────────────────┐
+│ Classification Analyst│  apply HS rules and reasoning
+└───────────┬───────────┘
+            │
+            ▼
+   HS code candidates
 ```
 
 ## Components
