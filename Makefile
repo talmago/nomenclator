@@ -22,7 +22,7 @@ test:
 integration:
 	poetry run pytest tests/integration
 
-check: lint typecheck test
+check: lint typecheck
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +

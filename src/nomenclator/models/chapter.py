@@ -35,21 +35,3 @@ class HSChapter:
             "headings": [heading.to_dict() for heading in self.headings],
             "raw_text": self.raw_text,
         }
-
-    def to_classification_context(self) -> dict[str, Any]:
-        """Return a compact representation for LLM classification.
-
-        The returned context contains the legal and structural information needed
-        for HS classification while omitting the full extracted chapter text to
-        keep prompts compact.
-
-        Returns:
-            JSON-serializable chapter classification context.
-        """
-
-        return {
-            "chapter_number": self.chapter_number,
-            "title": self.title,
-            "notes": [note.to_dict() for note in self.notes],
-            "headings": [heading.to_dict() for heading in self.headings],
-        }

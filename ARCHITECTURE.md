@@ -28,10 +28,13 @@ flowchart TD
     F["🧠 Research Analyst<br/>Evaluate classification pathways"]
     G["📖 Ranked chapter candidates"]
 
-    H["⚖️ Classification Analyst<br/>Apply HS rules and reasoning"]
-    I["✅ HS code candidates"]
+    H["🧩 Classification Context Builder<br/>Global heading-chunk retrieval"]
+    I["📄 Compact chapter context<br/>notes + selected headings"]
 
-    A --> B --> C --> D --> E --> F --> G --> H --> I
+    J["⚖️ Classification Analyst<br/>Apply HS rules and reasoning"]
+    K["✅ HS code candidates"]
+
+    A --> B --> C --> D --> E --> F --> G --> H --> I --> J --> K
 ```
 
 ## Components
@@ -101,6 +104,45 @@ Output:
 
 ---
 
+### Classification Context Builder
+
+The Classification Context Builder compacts the shortlisted chapters into a
+prompt-sized context for the Classification Analyst. It sits between the
+Research Analyst and the Classification Analyst and is the second retrieval
+stage of the pipeline.
+
+Its responsibilities:
+
+- Split each shortlisted chapter into heading-level chunks (one heading plus
+  its subheadings per chunk).
+- Index the chunks of **all** shortlisted chapters together in a single hybrid
+  retriever.
+- Retrieve the globally most relevant chunks, bounded by a global chunk
+  budget (`max_chunks`).
+- Guarantee at least one heading chunk per shortlisted chapter (the floor) so
+  the Research Analyst's shortlisting is respected.
+- Always include the full chapter notes for every shortlisted chapter,
+  regardless of which chunks were retrieved, because notes apply to the whole
+  chapter and are required for legal reasoning.
+
+The global budget bounds the total Classification Analyst prompt size
+regardless of how many chapters were shortlisted or how dense they are. This
+trades classification accuracy against model cost: a smaller budget yields a
+more compact prompt and lower token cost but risks dropping the heading that
+contains the correct 6-digit subheading, while a larger budget improves recall
+at the expense of a larger prompt.
+
+Output:
+
+- One compact context entry per shortlisted chapter, containing chapter
+  metadata, all chapter notes, and the selected heading hierarchy.
+
+The context builder is deterministic and reuses the same hybrid retrieval
+machinery (semantic + BM25 with RRF) as the Nomenclature Retriever, applied
+this time to heading chunks instead of whole chapters.
+
+---
+
 ### Classification Analyst
 
 The Classification Analyst performs the final classification reasoning.
@@ -108,7 +150,8 @@ The Classification Analyst performs the final classification reasoning.
 Its responsibilities:
 
 - Analyze product facts.
-- Review relevant HS chapter context.
+- Review the compact classification context (chapter notes and selected
+  headings).
 - Apply HS classification principles.
 - Consider competing classifications.
 - Produce ranked HS code candidates with reasoning.
@@ -151,8 +194,12 @@ The system follows a narrowing strategy:
 1. Raw product description.
 2. Structured product facts.
 3. Candidate HS chapters.
-4. Relevant classification context.
+4. Globally selected heading chunks (bounded by a global chunk budget).
 5. HS code candidates.
 
-This reduces the amount of nomenclature context required by the reasoning model
-while keeping the classification process grounded in HS data.
+Retrieval is applied twice, at decreasing granularity: first over whole
+chapters to shortlist classification areas, then over heading chunks within
+the shortlisted chapters to select only the relevant headings. This reduces
+the amount of nomenclature context required by the reasoning model while
+keeping the classification process grounded in HS data and bounding the total
+prompt size.

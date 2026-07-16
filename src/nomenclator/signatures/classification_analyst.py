@@ -31,8 +31,17 @@ class ClassificationAnalystSignature(dspy.Signature):
     - Assume the highest-ranked retrieved chapter is correct.
     - Ignore exclusions or legal notes.
 
+    Scoring:
+    - Assign each candidate a confidence score between 0.0 and 1.0, where 1.0
+      means highest confidence in the classification.
+    - Scores must never fall outside the 0.0-1.0 range.
+
     Output:
-    - Return ranked 6-digit HS subheading candidates.
+    - Return up to max_candidates ranked 6-digit HS subheading candidates.
+    - When competing classification pathways are plausible, include them as
+      additional ranked candidates (even at lower confidence) so the strongest
+      alternatives remain visible. Return fewer than max_candidates only when a
+      single classification is unambiguously correct.
     - Include clear legal reasoning for each candidate.
     """
 
@@ -47,6 +56,18 @@ class ClassificationAnalystSignature(dspy.Signature):
         )
     )
 
+    max_candidates: int = dspy.InputField(
+        desc=(
+            "Maximum number of ranked HS subheading candidates to return. "
+            "Include competing alternatives up to this limit; return fewer "
+            "only when a single classification is unambiguously correct."
+        )
+    )
+
     classification: HSClassificationOutputModel = dspy.OutputField(
-        desc="Ranked 6-digit HS subheading candidates with legal reasoning."
+        desc=(
+            "Ranked 6-digit HS subheading candidates with legal reasoning and "
+            "confidence scores between 0.0 and 1.0. Candidates must not exceed "
+            "max_candidates."
+        )
     )

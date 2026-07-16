@@ -50,7 +50,7 @@ def main() -> None:
         "Fresh bananas",
     ]
 
-    result = agent.classify(queries[1])
+    result = agent.classify(queries[0])
 
     print("Top classification candidates:\n")
 
@@ -83,30 +83,29 @@ Example output:
 ```text
 Top classification candidates:
 
-1. 8708.99 — Other parts and accessories of motor vehicles
-   Score: 0.95
-   Source chapter: 87
+1. 6105.10 — Men's or boys' shirts, knitted or crocheted, of cotton
+   Score: 1.00
+   Source chapter: 61
    Reasoning:
-     • The product is a lithium ion battery pack designed for electric vehicles.
-     • Chapter 87 covers vehicles and their parts.
-     • Subheading 8708.99 covers other motor vehicle parts and accessories.
-     • The battery pack is designed specifically for electric vehicles.
+     • Product is a knitted shirt, so falls under Chapter 61 which covers knitted articles.
+     • Heading 61.05 specifically covers men's or boys' knitted shirts.
+     • Material is cotton, matching subheading 6105.10 'of cotton'.
+     • Chapter 62 headings are for non-knitted textiles and explicitly exclude knitted articles, making Chapter 62 less appropriate here.
 
-2. 8507.60 — Lithium-ion accumulators
-   Score: 0.75
-   Source chapter: 85
+2. 6205.20 — Men's or boys' shirts of cotton
+   Score: 0.30
+   Source chapter: 62
    Reasoning:
-     • Lithium-ion batteries are generally classified under heading 8507.
-     • Because this battery pack is designed specifically for electric vehicles,
-       Chapter 87 is considered the stronger classification.
-     • Heading 8507 remains a plausible alternative depending on the product's
-       presentation and intended use.
+     • Heading 62.05 covers men's shirts made of woven fabric, not knitted.
+     • If product was woven (which it is not), this would be appropriate.
+     • Mentioned as secondary in case of uncertainty over fabric construction.
+     • Chapter 62 explicitly excludes knitted articles except under 62.12.
 
 Token usage
-  Prompt tokens:     9,862
-  Completion tokens: 997
-  Total tokens:      10,859
-  Estimated cost:    $0.00554
+  Prompt tokens:     5,686
+  Completion tokens: 662
+  Total tokens:      6,348
+  Estimated cost:    $0.00896
 ```
 
 The pipeline performs the following steps:

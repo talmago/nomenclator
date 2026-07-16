@@ -50,13 +50,14 @@ import bm25s
 from model2vec import StaticModel
 import numpy as np
 import numpy.typing as npt
+from vicinity.backends.basic import BasicArgs
 
-from nomenclator.models.search import RetrievalDocument, SearchResult, T
+from nomenclator.models.search import RetrievalDocument, SearchResult
 from nomenclator.models.tree import HSDocumentRef
 from nomenclator.retrieval.dense import SelectableBasicBackend, load_model
 
 
-class Retriever:
+class Retriever[T]:
     """Hybrid semantic and lexical document retriever.
 
     The retriever builds a searchable index over an iterable of
@@ -101,6 +102,8 @@ class Retriever:
             raise ValueError("Provide either model or model_name, not both")
 
         if model is None:
+            if model_name is None:
+                raise ValueError("Either model or model_name must be provided")
             model, _ = load_model(model_name)
 
         self._model = model
@@ -155,7 +158,7 @@ class Retriever:
             dtype=np.float32,
         )
 
-        return SelectableBasicBackend(embeddings, {})
+        return SelectableBasicBackend(embeddings, BasicArgs())
 
     def search(
         self,
@@ -177,7 +180,7 @@ class Retriever:
 
         query = self._build_query(
             description,
-            keywords,
+            list(keywords) if keywords is not None else None,
         )
 
         candidate_count = limit * 5

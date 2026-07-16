@@ -16,6 +16,7 @@ from nomenclator.models.classification import (
     HSClassificationOutputModel,
     HSCodeCandidateModel,
 )
+from nomenclator.models.result import HSClassificationResult
 from nomenclator.models.tree import HSDocumentRef, HSSection
 from nomenclator.usage import calc_usage
 
@@ -29,14 +30,72 @@ def agent() -> HSClassificationAgent:
     agent = HSClassificationAgent.__new__(HSClassificationAgent)
 
     agent._client = client
-    agent._retriever = MagicMock()
     agent._retrieval_limit = 5
+    agent._model_name = "test-model"
+    agent._max_candidates = 3
+    agent._max_chunks = 20
 
     agent._product_analyst = MagicMock()
     agent._research_analyst = MagicMock()
     agent._classification_analyst = MagicMock()
 
     return agent
+
+
+def _mock_chapter(
+    *,
+    chapter_number: int = 85,
+    title: str = "Electrical machinery and equipment",
+    ref: str = "8501-2022E",
+    notes: list | None = None,
+) -> MagicMock:
+    """Build a mocked HSChapter."""
+
+    chapter = MagicMock()
+    chapter.chapter_number = chapter_number
+    chapter.title = title
+    chapter.document.ref = ref
+    chapter.notes = notes if notes is not None else []
+    chapter.headings = []
+    return chapter
+
+
+def _heading_mock(heading_dict: dict) -> MagicMock:
+    """Build a mocked HSHeading whose to_dict returns ``heading_dict``."""
+
+    heading = MagicMock()
+    heading.to_dict.return_value = heading_dict
+    return heading
+
+
+def _patch_candidate_chapters(retrieved: list):
+    """Patch ``_retrieve_chapters`` to return ``retrieved``.
+
+    Returns the patch context manager so callers can assert on the call
+    (description and keywords).
+    """
+
+    return patch.object(
+        HSClassificationAgent,
+        "_retrieve_chapters",
+        return_value=retrieved,
+    )
+
+
+def _patch_headings(
+    headings_by_chapter: dict[int, list[MagicMock]],
+):
+    """Patch ``_retrieve_headings`` to return a fixed mapping.
+
+    The mapping keys are chapter numbers and values are the heading mocks that
+    should appear in that chapter's classification context.
+    """
+
+    return patch.object(
+        HSClassificationAgent,
+        "_retrieve_headings",
+        return_value=headings_by_chapter,
+    )
 
 
 def test_agent_pipeline(
@@ -60,7 +119,6 @@ def test_agent_pipeline(
     )
 
     retrieved = [MagicMock()]
-    agent._retriever.search.return_value = retrieved
 
     research_context = MagicMock()
 
@@ -77,12 +135,14 @@ def test_agent_pipeline(
         return_value=navigation,
     )
 
-    chapter_context = MagicMock()
-
-    chapter = MagicMock()
-    chapter.to_classification_context.return_value = chapter_context
+    chapter = _mock_chapter(
+        chapter_number=85,
+        ref="8501-2022E",
+    )
 
     agent._client.get_chapter.return_value = chapter
+
+    heading = _heading_mock({"code": "8507", "description": "Electric accumulators"})
 
     expected = HSClassificationOutputModel(
         candidates=[
@@ -102,13 +162,22 @@ def test_agent_pipeline(
         return_value=expected,
     )
 
-    result = agent.classify(
-        "lithium ion battery pack",
-    )
+    with (
+        _patch_candidate_chapters(retrieved) as retrieve,
+        _patch_headings({85: [heading]}),
+    ):
+        result = agent.classify(
+            "lithium ion battery pack",
+        )
 
-    assert result is expected
+    assert result.classification is expected
+    assert isinstance(result, HSClassificationResult)
+    assert result.facts is facts
+    assert result.retrieved is retrieved
+    assert result.navigation is navigation
+    assert result.candidates == expected.candidates
 
-    agent._retriever.search.assert_called_once_with(
+    retrieve.assert_called_once_with(
         "lithium battery pack",
         keywords=[
             "battery",
@@ -116,7 +185,6 @@ def test_agent_pipeline(
             "lithium",
             "part",
         ],
-        limit=agent._retrieval_limit,
     )
 
     agent._client.get_chapter.assert_called_once_with(
@@ -124,6 +192,22 @@ def test_agent_pipeline(
     )
 
     agent._classification_analyst.assert_called_once()
+
+    (classification_call,) = agent._classification_analyst.call_args_list
+    (_facts_arg, chapter_context_arg, max_candidates_arg) = classification_call.args
+
+    assert max_candidates_arg == agent._max_candidates
+
+    assert chapter_context_arg == [
+        {
+            "chapter_number": 85,
+            "title": "Electrical machinery and equipment",
+            "notes": [],
+            "headings": [
+                {"code": "8507", "description": "Electric accumulators"},
+            ],
+        }
+    ]
 
 
 def test_agent_raises_no_candidates(
@@ -144,9 +228,7 @@ def test_agent_raises_no_candidates(
 
     agent._product_analyst.return_value = facts
 
-    agent._retriever.search.return_value = []
-
-    with pytest.raises(HSNoCandidatesFoundError):
+    with _patch_candidate_chapters([]), pytest.raises(HSNoCandidatesFoundError):
         agent.classify(
             "unknown product",
         )
@@ -314,10 +396,6 @@ def test_agent_wraps_chapter_loading_failure(
 
     agent._product_analyst.return_value = facts
 
-    agent._retriever.search.return_value = [
-        MagicMock(),
-    ]
-
     research_context = MagicMock()
 
     agent._build_research_context = MagicMock(
@@ -335,7 +413,10 @@ def test_agent_wraps_chapter_loading_failure(
         "chapter download failed",
     )
 
-    with pytest.raises(HSClassificationPipelineError) as exc_info:
+    with (
+        _patch_candidate_chapters([MagicMock()]),
+        pytest.raises(HSClassificationPipelineError) as exc_info,
+    ):
         agent.classify(
             "lithium battery pack",
         )
@@ -355,14 +436,17 @@ def test_agent_wraps_product_analysis_failure(
         "LLM unavailable",
     )
 
-    with pytest.raises(HSProductAnalysisError) as exc_info:
+    with (
+        _patch_candidate_chapters([]) as retrieve,
+        pytest.raises(HSProductAnalysisError) as exc_info,
+    ):
         agent.classify(
             "lithium battery pack",
         )
 
     assert "Failed to extract product facts" in str(exc_info.value)
 
-    agent._retriever.search.assert_not_called()
+    retrieve.assert_not_called()
     agent._research_analyst.assert_not_called()
     agent._classification_analyst.assert_not_called()
 
@@ -386,8 +470,6 @@ def test_agent_wraps_research_analysis_failure(
 
     retrieved = [MagicMock()]
 
-    agent._retriever.search.return_value = retrieved
-
     research_context = MagicMock()
 
     agent._build_research_context = MagicMock(
@@ -398,7 +480,10 @@ def test_agent_wraps_research_analysis_failure(
         "LLM unavailable",
     )
 
-    with pytest.raises(HSResearchAnalysisError) as exc_info:
+    with (
+        _patch_candidate_chapters(retrieved),
+        pytest.raises(HSResearchAnalysisError) as exc_info,
+    ):
         agent.classify(
             "lithium battery pack",
         )
@@ -431,8 +516,6 @@ def test_agent_wraps_classification_failure(
 
     retrieved = [MagicMock()]
 
-    agent._retriever.search.return_value = retrieved
-
     research_context = MagicMock()
 
     agent._build_research_context = MagicMock(
@@ -446,10 +529,10 @@ def test_agent_wraps_classification_failure(
 
     agent._research_analyst.return_value = navigation
 
-    chapter = MagicMock()
-    chapter.to_classification_context.return_value = {
-        "chapter_number": 85,
-    }
+    chapter = _mock_chapter(
+        chapter_number=85,
+        ref="8501-2022E",
+    )
 
     agent._client.get_chapter.return_value = chapter
 
@@ -457,7 +540,11 @@ def test_agent_wraps_classification_failure(
         "LLM unavailable",
     )
 
-    with pytest.raises(HSClassificationAnalysisError) as exc_info:
+    with (
+        _patch_candidate_chapters(retrieved),
+        _patch_headings({85: [_heading_mock({"chapter_number": 85})]}),
+        pytest.raises(HSClassificationAnalysisError) as exc_info,
+    ):
         agent.classify(
             "lithium battery pack",
         )
@@ -531,12 +618,14 @@ def test_retrieval_keywords_adds_part_keyword() -> None:
     ]
 
 
-def test_build_hs_navigation_retriever_builds_documents() -> None:
-    """HS navigation retriever should be built from tree chapters."""
+def test_retrieve_candidate_chapters_builds_documents() -> None:
+    """Candidate chapter retrieval should build documents from tree chapters."""
 
     agent = HSClassificationAgent.__new__(
         HSClassificationAgent,
     )
+    agent._model_name = "test-model"
+    agent._retrieval_limit = 5
 
     chapter = MagicMock(
         ref="0101-2022E",
@@ -556,13 +645,16 @@ def test_build_hs_navigation_retriever_builds_documents() -> None:
     with patch(
         "nomenclator.agent.Retriever",
     ) as retriever_cls:
-        retriever = agent._build_hs_navigation_retriever(
-            model_name="test-model",
+        results = agent._retrieve_chapters(
+            "live horses",
+            keywords=["horse", "animal"],
         )
 
     retriever_cls.assert_called_once()
 
     (documents,) = retriever_cls.call_args.args
+    (model_name_kwarg,) = retriever_cls.call_args.kwargs.values()
+    assert model_name_kwarg == "test-model"
 
     assert len(documents) == 1
 
@@ -573,11 +665,20 @@ def test_build_hs_navigation_retriever_builds_documents() -> None:
     assert "SECTION I" in document.content
     assert "LIVE ANIMALS" in document.content
 
-    assert retriever is retriever_cls.return_value
+    retriever_cls.return_value.search.assert_called_once_with(
+        "live horses",
+        keywords=["horse", "animal"],
+        limit=5,
+    )
+    assert results is retriever_cls.return_value.search.return_value
 
 
-def test_build_hs_navigation_retriever_skips_chapters_without_refs() -> None:
+def test_retrieve_chapters_skips_chapters_without_refs() -> None:
+    """Chapters without a reference should be excluded from the retriever."""
+
     agent = HSClassificationAgent.__new__(HSClassificationAgent)
+    agent._model_name = "test-model"
+    agent._retrieval_limit = 5
 
     valid = MagicMock(ref="0101-2022E")
     invalid = MagicMock(ref=None)
@@ -593,8 +694,9 @@ def test_build_hs_navigation_retriever_skips_chapters_without_refs() -> None:
     )
 
     with patch("nomenclator.agent.Retriever") as retriever_cls:
-        agent._build_hs_navigation_retriever(
-            model_name=None,
+        agent._retrieve_chapters(
+            "live horses",
+            keywords=[],
         )
 
     (documents,) = retriever_cls.call_args.args
@@ -624,8 +726,6 @@ def test_agent_loads_only_selected_chapters(
     # Pretend retrieval found many candidate chapters.
     retrieved = [MagicMock() for _ in range(5)]
 
-    agent._retriever.search.return_value = retrieved
-
     research_context = MagicMock()
 
     agent._build_research_context = MagicMock(
@@ -641,8 +741,9 @@ def test_agent_loads_only_selected_chapters(
 
     agent._research_analyst.return_value = navigation
 
-    chapter = MagicMock()
-    chapter.to_classification_context.return_value = {}
+    chapter = _mock_chapter(
+        ref="8501-2022E",
+    )
 
     agent._client.get_chapter.return_value = chapter
 
@@ -652,11 +753,15 @@ def test_agent_loads_only_selected_chapters(
 
     agent._classification_analyst.return_value = expected
 
-    result = agent.classify(
-        "lithium battery pack",
-    )
+    with (
+        _patch_candidate_chapters(retrieved),
+        _patch_headings({85: [_heading_mock({})]}),
+    ):
+        result = agent.classify(
+            "lithium battery pack",
+        )
 
-    assert result is expected
+    assert result.classification is expected
 
     assert agent._client.get_chapter.call_count == 2
 
@@ -748,3 +853,304 @@ def test_calc_usage_preserves_cost_from_payload() -> None:
     assert usage.completion_tokens == 500
     assert usage.total_tokens == 1500
     assert usage.cost == 0.0025
+
+
+def test_heading_chunks_produces_heading_chunks() -> None:
+    """Each heading should become one retrieval chunk with heading as payload."""
+
+    from nomenclator.models.chapter import HSChapter
+    from nomenclator.models.tree import HSDocumentRef, HSHeading, HSSubheading
+
+    heading_a = HSHeading(
+        code="85.07",
+        description="Electric accumulators",
+        subheadings=[
+            HSSubheading(code="8507.10", description="Lead-acid accumulators"),
+            HSSubheading(code="8507.60", description="Lithium-ion accumulators"),
+        ],
+    )
+
+    heading_b = HSHeading(
+        code="85.08",
+        description="Electrical vacuum cleaners",
+        subheadings=[],
+    )
+
+    chapter = HSChapter(
+        chapter_number=85,
+        title="Electrical machinery and equipment",
+        document=HSDocumentRef(title="Chapter 85", ref="8501-2022E"),
+        notes=[],
+        headings=[heading_a, heading_b],
+    )
+
+    chunks = HSClassificationAgent._split_chapter_into_chunks(chapter)
+
+    assert len(chunks) == 2
+
+    assert chunks[0].id == "85:85.07"
+    assert chunks[0].payload is heading_a
+    assert "Heading 85.07" in chunks[0].content
+    assert "Electric accumulators" in chunks[0].content
+    assert "8507.10" in chunks[0].content
+    assert "Lead-acid accumulators" in chunks[0].content
+    assert "8507.60" in chunks[0].content
+    assert "Lithium-ion accumulators" in chunks[0].content
+
+    assert chunks[1].id == "85:85.08"
+    assert chunks[1].payload is heading_b
+    assert "Heading 85.08" in chunks[1].content
+    assert "Electrical vacuum cleaners" in chunks[1].content
+
+
+def test_heading_chunk_content_includes_group_path() -> None:
+    """Subheading group labels should be rendered into chunk content."""
+
+    from nomenclator.models.chapter import HSChapter
+    from nomenclator.models.tree import HSDocumentRef, HSHeading, HSSubheading
+
+    heading = HSHeading(
+        code="85.07",
+        description="Electric accumulators",
+        subheadings=[
+            HSSubheading(
+                code="8507.80",
+                description="Other accumulators",
+                group_path=["Other"],
+            ),
+        ],
+    )
+
+    chapter = HSChapter(
+        chapter_number=85,
+        title="Electrical machinery",
+        document=HSDocumentRef(title="Chapter 85", ref="8501-2022E"),
+        headings=[heading],
+    )
+
+    (chunk,) = HSClassificationAgent._split_chapter_into_chunks(chapter)
+
+    assert "Other" in chunk.content
+    assert "8507.80" in chunk.content
+
+
+def test_classification_context_always_includes_chapter_notes(
+    agent: HSClassificationAgent,
+) -> None:
+    """Chapter notes should be included regardless of retrieved chunks."""
+
+    facts = MagicMock()
+    facts.normalized_description = "lithium battery pack"
+    facts.keywords = []
+
+    facts.product_category = ""
+    facts.main_attributes.product_type = ""
+    facts.main_attributes.material = ""
+    facts.main_attributes.is_part = False
+
+    agent._product_analyst.return_value = facts
+
+    agent._build_research_context = MagicMock(return_value=MagicMock())
+
+    navigation = MagicMock()
+    navigation.candidates = [MagicMock(chapter_ref="85")]
+
+    agent._research_analyst.return_value = navigation
+
+    note = MagicMock()
+    note.to_dict.return_value = {"number": "1", "intro": "Chapter note"}
+
+    chapter = _mock_chapter(
+        chapter_number=85,
+        ref="8501-2022E",
+        notes=[note],
+    )
+
+    agent._client.get_chapter.return_value = chapter
+
+    heading = _heading_mock({"code": "8507", "description": "Electric accumulators"})
+
+    agent._classification_analyst.return_value = HSClassificationOutputModel(
+        candidates=[],
+    )
+
+    with _patch_candidate_chapters([MagicMock()]), _patch_headings({85: [heading]}):
+        agent.classify("lithium battery pack")
+
+    (_, chapter_context_arg, _) = agent._classification_analyst.call_args.args
+
+    assert chapter_context_arg == [
+        {
+            "chapter_number": 85,
+            "title": "Electrical machinery and equipment",
+            "notes": [{"number": "1", "intro": "Chapter note"}],
+            "headings": [
+                {"code": "8507", "description": "Electric accumulators"},
+            ],
+        }
+    ]
+
+
+def test_classification_context_handles_chapter_without_headings(
+    agent: HSClassificationAgent,
+) -> None:
+    """A chapter with no headings should yield context with empty headings."""
+
+    facts = MagicMock()
+    facts.normalized_description = "rare product"
+    facts.keywords = []
+
+    facts.product_category = ""
+    facts.main_attributes.product_type = ""
+    facts.main_attributes.material = ""
+    facts.main_attributes.is_part = False
+
+    agent._product_analyst.return_value = facts
+
+    agent._build_research_context = MagicMock(return_value=MagicMock())
+
+    navigation = MagicMock()
+    navigation.candidates = [MagicMock(chapter_ref="99")]
+
+    agent._research_analyst.return_value = navigation
+
+    note = MagicMock()
+    note.to_dict.return_value = {"number": "1", "intro": "Note"}
+
+    chapter = _mock_chapter(
+        chapter_number=99,
+        ref="9901-2022E",
+        notes=[note],
+    )
+
+    agent._client.get_chapter.return_value = chapter
+
+    agent._classification_analyst.return_value = HSClassificationOutputModel(
+        candidates=[],
+    )
+
+    # No chunks for chapter 99, so the retriever is never built.
+    with (
+        _patch_candidate_chapters([MagicMock()]),
+        patch.object(
+            HSClassificationAgent,
+            "_retrieve_headings",
+            return_value={},
+        ) as retrieve_headings,
+    ):
+        agent.classify("rare product")
+
+    retrieve_headings.assert_called_once()
+
+    (_, chapter_context_arg, _) = agent._classification_analyst.call_args.args
+
+    assert chapter_context_arg == [
+        {
+            "chapter_number": 99,
+            "title": "Electrical machinery and equipment",
+            "notes": [{"number": "1", "intro": "Note"}],
+            "headings": [],
+        }
+    ]
+
+
+def _search_result(chunk_id: str, chapter_number: int, heading_dict: dict):
+    """Build a fake SearchResult for ``_select_headings`` tests."""
+
+    heading = _heading_mock(heading_dict)
+
+    document = MagicMock()
+    document.id = chunk_id
+    document.payload = heading
+
+    result = MagicMock()
+    result.document = document
+    return result
+
+
+def test_select_headings_guarantees_one_per_chapter(
+    agent: HSClassificationAgent,
+) -> None:
+    """Every chapter with chunks must get at least one heading (floor)."""
+
+    # Global ranking puts all of chapter 90 first; chapter 85's only chunk
+    # is ranked last. The floor must still give chapter 85 one heading.
+    results = [
+        _search_result("90:9001", 90, {"code": "9001"}),
+        _search_result("90:9002", 90, {"code": "9002"}),
+        _search_result("90:9003", 90, {"code": "9003"}),
+        _search_result("85:8507", 85, {"code": "8507"}),
+    ]
+
+    selected = HSClassificationAgent._select_headings(
+        results,
+        chunk_to_chapter={
+            "90:9001": 90,
+            "90:9002": 90,
+            "90:9003": 90,
+            "85:8507": 85,
+        },
+        chapters_with_chunks={85, 90},
+        budget=3,
+    )
+
+    # Budget 3: one for 85 (floor), then two for 90.
+    assert len(selected[85]) == 1
+    assert selected[85][0].to_dict() == {"code": "8507"}
+    assert len(selected[90]) == 2
+    assert [h.to_dict() for h in selected[90]] == [{"code": "9001"}, {"code": "9002"}]
+
+
+def test_select_headings_respects_budget(
+    agent: HSClassificationAgent,
+) -> None:
+    """Total selected headings must never exceed the global budget."""
+
+    results = [
+        _search_result(f"85:850{i}", 85, {"code": f"850{i}"}) for i in range(1, 6)
+    ]
+
+    selected = HSClassificationAgent._select_headings(
+        results,
+        chunk_to_chapter={f"85:850{i}": 85 for i in range(1, 6)},
+        chapters_with_chunks={85},
+        budget=3,
+    )
+
+    total = sum(len(headings) for headings in selected.values())
+    assert total == 3
+    assert [h.to_dict() for h in selected[85]] == [
+        {"code": "8501"},
+        {"code": "8502"},
+        {"code": "8503"},
+    ]
+
+
+def test_select_headings_budget_below_chapter_count(
+    agent: HSClassificationAgent,
+) -> None:
+    """When the budget is smaller than the number of chapters, the floor phase
+    stops at the budget, so only the highest-ranked chapters are represented."""
+
+    results = [
+        _search_result("90:9001", 90, {"code": "9001"}),
+        _search_result("85:8507", 85, {"code": "8507"}),
+        _search_result("84:8401", 84, {"code": "8401"}),
+    ]
+
+    selected = HSClassificationAgent._select_headings(
+        results,
+        chunk_to_chapter={
+            "90:9001": 90,
+            "85:8507": 85,
+            "84:8401": 84,
+        },
+        chapters_with_chunks={84, 85, 90},
+        budget=2,
+    )
+
+    total = sum(len(headings) for headings in selected.values())
+    assert total == 2
+    assert selected[90] and len(selected[90]) == 1
+    assert selected[85] and len(selected[85]) == 1
+    assert selected[84] == []

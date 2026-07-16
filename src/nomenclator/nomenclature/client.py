@@ -167,13 +167,13 @@ class NomenclatureClient:
         Raises:
             ValueError: If the chapter cannot be resolved.
         """
-        self._ensure_tree()
+        tree = self._ensure_tree()
 
         normalized_ref = self._normalize_chapter_ref(
             chapter_ref_or_code,
         )
 
-        for section in self._tree.sections:
+        for section in tree.sections:
             for chapter in section.chapters:
                 if chapter.ref and normalize_ref_token(chapter.ref) == normalized_ref:
                     return section
