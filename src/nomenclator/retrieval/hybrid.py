@@ -44,7 +44,9 @@ access, document parsing, or application-specific reasoning.
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 import re
+from typing import TypeVar
 
 import bm25s
 from model2vec import StaticModel
@@ -52,9 +54,26 @@ import numpy as np
 import numpy.typing as npt
 from vicinity.backends.basic import BasicArgs
 
-from nomenclator.models.search import RetrievalDocument, SearchResult
-from nomenclator.models.tree import HSDocumentRef
 from nomenclator.retrieval.dense import SelectableBasicBackend, load_model
+
+T = TypeVar("T")
+
+
+@dataclass(slots=True)
+class RetrievalDocument[T]:
+    id: str
+    content: str
+    payload: T
+
+
+@dataclass(slots=True)
+class SearchResult[T]:
+    """Result returned by the hybrid retriever."""
+
+    document: RetrievalDocument[T]
+    score: float
+    semantic_score: float | None = None
+    bm25_score: float | None = None
 
 
 class Retriever[T]:
@@ -380,27 +399,6 @@ class Retriever[T]:
         """
 
         return [token.lower() for token in re.findall(r"\w+", text) if token.strip()]
-
-    @staticmethod
-    def _chapter_text(
-        *,
-        section_label: str,
-        section_title: str,
-        chapter: HSDocumentRef,
-    ) -> str:
-        """Build the searchable text representation of an HS chapter.
-
-        Includes HS hierarchy context so semantic retrieval can distinguish
-        between broad categories and specific chapter concepts.
-        """
-
-        return " ".join(
-            [
-                f"Section: {section_label}",
-                f"Section description: {section_title}",
-                f"Chapter: {chapter.title}",
-            ]
-        )
 
     @staticmethod
     def _build_query(

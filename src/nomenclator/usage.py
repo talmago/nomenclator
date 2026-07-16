@@ -1,7 +1,18 @@
+from dataclasses import dataclass
+
 import dspy
 
 from nomenclator.exceptions import HSInitializationError
-from nomenclator.models.usage import TokenUsage
+
+
+@dataclass(slots=True)
+class TokenUsage:
+    """Aggregated token usage for an LLM execution."""
+
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    cost: float = 0.0
 
 
 def calc_usage(

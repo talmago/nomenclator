@@ -5,6 +5,7 @@ import pytest
 from nomenclator.agent import (
     HSClassificationAgent,
     HSClassificationAnalysisError,
+    HSClassificationResult,
     HSProductAnalysisError,
     HSResearchAnalysisError,
 )
@@ -17,8 +18,7 @@ from nomenclator.models.classification import (
     HSClassificationOutputModel,
     HSCodeCandidateModel,
 )
-from nomenclator.models.result import HSClassificationResult
-from nomenclator.models.tree import HSDocumentRef, HSSection
+from nomenclator.nomenclature.tree import HSDocumentRef, HSSection
 from nomenclator.usage import calc_usage, ensure_dspy_lm
 
 
@@ -933,8 +933,8 @@ def test_calc_usage_preserves_cost_from_payload() -> None:
 def test_heading_chunks_produces_heading_chunks() -> None:
     """Each heading should become one retrieval chunk with heading as payload."""
 
-    from nomenclator.models.chapter import HSChapter
-    from nomenclator.models.tree import HSDocumentRef, HSHeading, HSSubheading
+    from nomenclator.nomenclature.chapter import HSChapter
+    from nomenclator.nomenclature.tree import HSDocumentRef, HSHeading, HSSubheading
 
     heading_a = HSHeading(
         code="85.07",
@@ -981,8 +981,8 @@ def test_heading_chunks_produces_heading_chunks() -> None:
 def test_heading_chunk_content_includes_group_path() -> None:
     """Subheading group labels should be rendered into chunk content."""
 
-    from nomenclator.models.chapter import HSChapter
-    from nomenclator.models.tree import HSDocumentRef, HSHeading, HSSubheading
+    from nomenclator.nomenclature.chapter import HSChapter
+    from nomenclator.nomenclature.tree import HSDocumentRef, HSHeading, HSSubheading
 
     heading = HSHeading(
         code="85.07",

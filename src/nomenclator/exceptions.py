@@ -15,3 +15,15 @@ class HSClassificationPipelineError(HSClassificationError):
 
 class HSNoCandidatesFoundError(HSClassificationPipelineError):
     """Raised when retrieval produces no HS chapter candidates."""
+
+
+class HSProductAnalysisError(HSClassificationPipelineError):
+    """Raised when product analysis fails."""
+
+
+class HSResearchAnalysisError(HSClassificationPipelineError):
+    """Raised when HS research analysis fails."""
+
+
+class HSClassificationAnalysisError(HSClassificationPipelineError):
+    """Raised when final classification analysis fails."""

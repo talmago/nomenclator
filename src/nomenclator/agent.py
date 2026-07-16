@@ -89,15 +89,22 @@ separately.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import dspy
 
 from nomenclator.exceptions import (
+    HSClassificationAnalysisError,
     HSClassificationPipelineError,
     HSInitializationError,
     HSNoCandidatesFoundError,
+    HSProductAnalysisError,
+    HSResearchAnalysisError,
 )
-from nomenclator.models.chapter import HSChapter
-from nomenclator.models.classification import HSClassificationOutputModel
+from nomenclator.models.classification import (
+    HSClassificationOutputModel,
+    HSCodeCandidateModel,
+)
 from nomenclator.models.navigation import (
     HSResearchCandidateModel,
     HSResearchChapterContext,
@@ -106,11 +113,10 @@ from nomenclator.models.navigation import (
     HSResearchSectionContext,
 )
 from nomenclator.models.product_facts import ProductFactsModel
-from nomenclator.models.result import HSClassificationResult
-from nomenclator.models.search import RetrievalDocument, SearchResult
-from nomenclator.models.tree import HSDocumentRef, HSHeading
+from nomenclator.nomenclature.chapter import HSChapter
 from nomenclator.nomenclature.client import NomenclatureClient
-from nomenclator.retrieval import Retriever
+from nomenclator.nomenclature.tree import HSDocumentRef, HSHeading
+from nomenclator.retrieval.hybrid import RetrievalDocument, Retriever, SearchResult
 from nomenclator.signatures.classification_analyst import ClassificationAnalystSignature
 from nomenclator.signatures.product_analyst import ProductAnalystSignature
 from nomenclator.signatures.research_analyst import ResearchAnalystSignature
@@ -255,16 +261,41 @@ class ClassificationAnalyst(dspy.Module):
         return result.classification
 
 
-class HSProductAnalysisError(HSClassificationPipelineError):
-    """Raised when product analysis fails."""
+@dataclass(slots=True)
+class HSClassificationResult:
+    """End-to-end result of the HS classification pipeline.
 
+    Wraps the final classification together with the intermediate artifacts
+    produced by each upstream stage, so callers can inspect the navigation
+    and reasoning that led to the candidates instead of only seeing the
+    final codes.
 
-class HSResearchAnalysisError(HSClassificationPipelineError):
-    """Raised when HS research analysis fails."""
+    Attributes:
+        facts: Structured product facts extracted by the Product Analyst.
+        keywords: Retrieval keywords derived from the product facts.
+        retrieved: Raw chapter retrieval results from the Nomenclature
+            Retriever (semantic + BM25 hybrid search).
+        navigation: Ranked chapter candidates produced by the Research
+            Analyst.
+        classification: Final ranked HS code candidates produced by the
+            Classification Analyst.
+    """
 
+    facts: ProductFactsModel
+    keywords: list[str]
+    retrieved: list[SearchResult[HSDocumentRef]]
+    navigation: HSResearchOutputModel
+    classification: HSClassificationOutputModel
 
-class HSClassificationAnalysisError(HSClassificationPipelineError):
-    """Raised when final classification analysis fails."""
+    @property
+    def candidates(self) -> list[HSCodeCandidateModel]:
+        """Ranked HS code candidates.
+
+        Convenience alias for ``classification.candidates`` so callers can
+        keep using ``result.candidates`` directly.
+        """
+
+        return self.classification.candidates
 
 
 class HSClassificationAgent:

@@ -11,15 +11,11 @@ import re
 
 import httpx
 
-from nomenclator.models import (
-    HSChapter,
-    HSDocumentRef,
-    HSGeneralRules,
-    HSSection,
-    HSSectionNotes,
-    HSTree,
-)
 from nomenclator.nomenclature import parser
+from nomenclator.nomenclature.chapter import HSChapter
+from nomenclator.nomenclature.notes import HSSectionNotes
+from nomenclator.nomenclature.rules import HSGeneralRules
+from nomenclator.nomenclature.tree import HSDocumentRef, HSSection, HSTree
 from nomenclator.nomenclature.urls import (
     WCO_HS_2022_PDF_BASE_URL,
     WCO_HS_2022_URL,
@@ -27,6 +23,7 @@ from nomenclator.nomenclature.urls import (
     document_url_from_ref,
     normalize_ref_token,
 )
+from nomenclator.nomenclature.utils import extract_pdf_text
 
 
 class NomenclatureClient:
@@ -365,7 +362,7 @@ class NomenclatureClient:
         """Download a PDF and return extracted text."""
         response = self._client.get(pdf_url, timeout=self.timeout)
         response.raise_for_status()
-        return parser.extract_pdf_text(response.content)
+        return extract_pdf_text(response.content)
 
     def _normalize_chapter_ref(self, value: str) -> str:
         """Resolve user input into a canonical chapter reference token."""

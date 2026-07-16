@@ -1,7 +1,7 @@
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from nomenclator.models.tree import HSDocumentRef
+from nomenclator.nomenclature.tree import HSDocumentRef
 
 
 @dataclass(slots=True)

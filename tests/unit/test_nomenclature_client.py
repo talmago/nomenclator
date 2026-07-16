@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from nomenclator.models.tree import HSTree
 from nomenclator.nomenclature.client import NomenclatureClient
+from nomenclator.nomenclature.tree import HSTree
 
 
 @pytest.fixture

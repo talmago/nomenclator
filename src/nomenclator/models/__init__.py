@@ -1,7 +1,13 @@
-from .chapter import HSChapter
-from .notes import HSNote, HSNoteClause, HSSectionNotes
-from .rules import HSAbbreviation, HSGeneralRule, HSGeneralRules
-from .tree import HSDocumentRef, HSHeading, HSSection, HSSubheading, HSTree
+from ..nomenclature.chapter import HSChapter
+from ..nomenclature.notes import HSNote, HSNoteClause, HSSectionNotes
+from ..nomenclature.rules import HSAbbreviation, HSGeneralRule, HSGeneralRules
+from ..nomenclature.tree import (
+    HSDocumentRef,
+    HSHeading,
+    HSSection,
+    HSSubheading,
+    HSTree,
+)
 
 __all__ = [
     "HSAbbreviation",

@@ -1,12 +1,11 @@
-from nomenclator.agent import HSClassificationAgent
+from nomenclator.agent import HSClassificationAgent, HSClassificationResult
 from nomenclator.exceptions import (
     HSClassificationError,
     HSClassificationPipelineError,
     HSInitializationError,
     HSNoCandidatesFoundError,
 )
-from nomenclator.models.result import HSClassificationResult
-from nomenclator.usage import calc_usage
+from nomenclator.usage import TokenUsage, calc_usage
 
 __all__ = [
     "HSClassificationAgent",
@@ -15,5 +14,6 @@ __all__ = [
     "HSClassificationResult",
     "HSInitializationError",
     "HSNoCandidatesFoundError",
+    "TokenUsage",
     "calc_usage",
 ]

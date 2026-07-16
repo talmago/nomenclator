@@ -1,8 +1,8 @@
 from dataclasses import dataclass, field
 from typing import Any
 
-from nomenclator.models.notes import HSNote
-from nomenclator.models.tree import HSDocumentRef, HSHeading
+from nomenclator.nomenclature.notes import HSNote
+from nomenclator.nomenclature.tree import HSDocumentRef, HSHeading
 
 
 @dataclass(slots=True)
