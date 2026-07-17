@@ -87,25 +87,18 @@ Top classification candidates:
    Score: 1.00
    Source chapter: 61
    Reasoning:
-     • Product is a knitted shirt, so falls under Chapter 61 which covers knitted articles.
-     • Heading 61.05 specifically covers men's or boys' knitted shirts.
-     • Material is cotton, matching subheading 6105.10 'of cotton'.
-     • Chapter 62 headings are for non-knitted textiles and explicitly exclude knitted articles, making Chapter 62 less appropriate here.
-
-2. 6205.20 — Men's or boys' shirts of cotton
-   Score: 0.30
-   Source chapter: 62
-   Reasoning:
-     • Heading 62.05 covers men's shirts made of woven fabric, not knitted.
-     • If product was woven (which it is not), this would be appropriate.
-     • Mentioned as secondary in case of uncertainty over fabric construction.
-     • Chapter 62 explicitly excludes knitted articles except under 62.12.
+     • Product is men's knitted shirts made of cotton, matching heading 61.05 for men's knitted shirts.
+     • Subheading 6105.10 specifies cotton material which corresponds exactly to the product's material.
+     • Chapter 61 applies only to made up knitted or crocheted articles per Chapter Note 1.
+     • Chapter 62 covers non-knitted apparel and is therefore not applicable.
+     • GIR Rules 1 and 3 favor the most specific accurate classification.
+     • No exclusion or other heading conflicts were identified.
 
 Token usage
-  Prompt tokens:     5,686
-  Completion tokens: 662
-  Total tokens:      6,348
-  Estimated cost:    $0.00896
+  Prompt tokens:     6,680
+  Completion tokens: 589
+  Total tokens:      7,269
+  Estimated cost:    $0.00924
 ```
 
 ## How it works?
@@ -122,7 +115,7 @@ Q: "Men's cotton knitted shirts"
 └───────────────────────────┬───────────────────────────┘
                             │
                             ▼
-┌─ Nomenclature Retriever ──────────────────────────────┐
+┌─ Nomenclature Retriever (1st retrieval) ──────────────┐
 │  hybrid search → candidate chapters                   │
 │    ch.61  Articles of apparel, knitted or crocheted   │
 │    ch.62  Articles of apparel, not knitted…           │
@@ -137,14 +130,18 @@ Q: "Men's cotton knitted shirts"
 └───────────────────────────┬───────────────────────────┘
                             │
                             ▼
-┌─ Classification Context Builder ──────────────────────┐
-│  compact context per shortlisted chapter              │
-│    ch.61  notes + heading 61.05 (men's knitted shirts)│
-│    ch.62  notes + heading 62.05 (men's woven shirts)  │
+┌─ Classification Context Builder (2nd retrieval) ──────┐
+│  hybrid search over heading chunks → compact context  │
+│    ch.61  notes + 61.05 → 6105.10 (knitted, cotton)   │
+│    ch.62  notes + 62.05 → 6205.20 (woven, cotton)     │
 └───────────────────────────┬───────────────────────────┘
                             │
+              ┌─────────────┴─────────────┐
+              │  + GIR rules (fixed size) │
+              └─────────────┬─────────────┘
                             ▼
 ┌─ Classification Analyst ──────────────────────────────┐
+│  apply chapter notes/headings + GIR                   │
 │  1. 6105.10  Men's or boys' shirts, knitted, of cotton│
 │     score 1.00 · chapter 61                           │
 │  2. 6205.20  Men's or boys' shirts of cotton          │

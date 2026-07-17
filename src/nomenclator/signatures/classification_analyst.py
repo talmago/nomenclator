@@ -18,18 +18,22 @@ class ClassificationAnalystSignature(dspy.Signature):
     You must:
     - Analyze the product facts together with the provided HS chapters.
     - Identify the correct heading and 6-digit subheading.
-    - Use chapter notes and heading descriptions as primary evidence.
-    - Apply HS legal classification principles.
+    - Use chapter notes and heading descriptions as primary evidence for
+      scope and coverage.
+    - Apply the provided General Rules for the Interpretation of the
+      Harmonized System (GIR) when resolving conflicts, incomplete or
+      unfinished goods, mixtures, composite goods, and packing.
     - Prefer specific classifications over general headings.
     - Compare competing classifications when ambiguity exists.
-    - Explain why the selected candidates are preferred.
+    - Explain why the selected candidates are preferred, citing relevant
+      GIR rules where they affect the decision.
 
     Do not:
     - Return chapter numbers as final classifications.
     - Return 4-digit headings as final classifications.
     - Classify based only on keyword similarity.
     - Assume the highest-ranked retrieved chapter is correct.
-    - Ignore exclusions or legal notes.
+    - Ignore exclusions, legal notes, or applicable GIR rules.
 
     Scoring:
     - Assign each candidate a confidence score between 0.0 and 1.0, where 1.0
@@ -47,6 +51,13 @@ class ClassificationAnalystSignature(dspy.Signature):
 
     product_facts: ProductFactsModel = dspy.InputField(
         desc="Structured product facts extracted from the product description."
+    )
+
+    general_rules: list[dict] = dspy.InputField(
+        desc=(
+            "General Rules for the Interpretation of the Harmonized System "
+            "(GIR). Each entry has rule id and full rule text."
+        )
     )
 
     chapter_context: list[dict] = dspy.InputField(

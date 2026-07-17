@@ -236,6 +236,7 @@ class ClassificationAnalyst(dspy.Module):
         self,
         product_facts: ProductFactsModel,
         chapter_context: list[dict],
+        general_rules: list[dict],
         max_candidates: int,
     ) -> HSClassificationOutputModel:
         """Classify a product.
@@ -245,6 +246,8 @@ class ClassificationAnalyst(dspy.Module):
                 description.
             chapter_context: Relevant HS chapter context including notes and
                 heading hierarchy.
+            general_rules: Compact GIR entries (rule id + text) used for legal
+                interpretation.
             max_candidates: Maximum number of ranked HS subheading candidates to
                 return.
 
@@ -255,6 +258,7 @@ class ClassificationAnalyst(dspy.Module):
         result = self.classify(
             product_facts=product_facts,
             chapter_context=chapter_context,
+            general_rules=general_rules,
             max_candidates=max_candidates,
         )
 
@@ -503,15 +507,19 @@ class HSClassificationAgent:
                 facts=facts,
                 keywords=keywords,
             )
+            general_rules = [
+                rule.to_dict() for rule in self._client.get_general_rules().rules
+            ]
         except Exception as exc:
             raise HSClassificationPipelineError(
-                "Failed to load HS chapter context"
+                "Failed to load HS classification context"
             ) from exc
 
         try:
             classification = self._classification_analyst(
                 facts,
                 chapter_context,
+                general_rules,
                 self._max_candidates,
             )
         except Exception as exc:

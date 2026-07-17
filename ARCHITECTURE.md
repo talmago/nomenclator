@@ -164,6 +164,10 @@ The context builder is deterministic and reuses the same hybrid retrieval
 machinery (semantic + BM25 with RRF) as the Nomenclature Retriever, applied
 this time to heading chunks instead of whole chapters.
 
+General Rules for the Interpretation of the Harmonized System (GIR) are loaded
+separately as fixed-size context for the Classification Analyst; they are not
+part of the heading-budgeted chapter context.
+
 ---
 
 ### Classification Analyst
@@ -175,7 +179,8 @@ Its responsibilities:
 - Analyze product facts.
 - Review the compact classification context (chapter notes and selected
   headings).
-- Apply HS classification principles.
+- Apply the provided General Rules for Interpretation (GIR) when resolving
+  conflicts, incomplete goods, mixtures, and related legal questions.
 - Consider competing classifications.
 - Produce ranked HS code candidates with reasoning.
 

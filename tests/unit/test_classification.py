@@ -18,15 +18,46 @@ from nomenclator.models.classification import (
     HSClassificationOutputModel,
     HSCodeCandidateModel,
 )
+from nomenclator.nomenclature.rules import HSGeneralRule, HSGeneralRules
 from nomenclator.nomenclature.tree import HSDocumentRef, HSSection
 from nomenclator.usage import calc_usage, ensure_dspy_lm
 
 
 @pytest.fixture
-def agent() -> HSClassificationAgent:
+def general_rules() -> HSGeneralRules:
+    """Compact fake GIR payload for classification pipeline tests."""
+
+    return HSGeneralRules(
+        title="General Rules for the interpretation of the Harmonized System",
+        document=HSDocumentRef(
+            title="General Rules",
+            ref="0001-2202E GIR",
+        ),
+        rules=[
+            HSGeneralRule(
+                rule="1",
+                text=(
+                    "Classification shall be determined according to the "
+                    "terms of the headings."
+                ),
+            ),
+            HSGeneralRule(
+                rule="2(a)",
+                text=(
+                    "Any reference to an article includes incomplete or "
+                    "unfinished articles."
+                ),
+            ),
+        ],
+    )
+
+
+@pytest.fixture
+def agent(general_rules: HSGeneralRules) -> HSClassificationAgent:
     """Create an agent with mocked dependencies."""
 
     client = MagicMock()
+    client.get_general_rules.return_value = general_rules
 
     agent = HSClassificationAgent.__new__(HSClassificationAgent)
 
@@ -175,6 +206,7 @@ def test_classify_requires_dspy_lm() -> None:
 
 def test_agent_pipeline(
     agent: HSClassificationAgent,
+    general_rules: HSGeneralRules,
 ) -> None:
     """Classification should pass data through all pipeline stages."""
 
@@ -267,9 +299,15 @@ def test_agent_pipeline(
     )
 
     agent._classification_analyst.assert_called_once()
+    agent._client.get_general_rules.assert_called_once()
 
     (classification_call,) = agent._classification_analyst.call_args_list
-    (_facts_arg, chapter_context_arg, max_candidates_arg) = classification_call.args
+    (
+        _facts_arg,
+        chapter_context_arg,
+        general_rules_arg,
+        max_candidates_arg,
+    ) = classification_call.args
 
     assert max_candidates_arg == agent._max_candidates
 
@@ -283,6 +321,7 @@ def test_agent_pipeline(
             ],
         }
     ]
+    assert general_rules_arg == [rule.to_dict() for rule in general_rules.rules]
 
 
 def test_agent_raises_no_candidates(
@@ -496,7 +535,7 @@ def test_agent_wraps_chapter_loading_failure(
             "lithium battery pack",
         )
 
-    assert "Failed to load HS chapter context" in str(exc_info.value)
+    assert "Failed to load HS classification context" in str(exc_info.value)
 
     agent._classification_analyst.assert_not_called()
     agent._build_research_context.assert_called_once()
@@ -1011,6 +1050,7 @@ def test_heading_chunk_content_includes_group_path() -> None:
 
 def test_classification_context_always_includes_chapter_notes(
     agent: HSClassificationAgent,
+    general_rules: HSGeneralRules,
 ) -> None:
     """Chapter notes should be included regardless of retrieved chunks."""
 
@@ -1052,7 +1092,12 @@ def test_classification_context_always_includes_chapter_notes(
     with _patch_candidate_chapters([MagicMock()]), _patch_headings({85: [heading]}):
         agent.classify("lithium battery pack")
 
-    (_, chapter_context_arg, _) = agent._classification_analyst.call_args.args
+    (
+        _,
+        chapter_context_arg,
+        general_rules_arg,
+        _,
+    ) = agent._classification_analyst.call_args.args
 
     assert chapter_context_arg == [
         {
@@ -1064,10 +1109,12 @@ def test_classification_context_always_includes_chapter_notes(
             ],
         }
     ]
+    assert general_rules_arg == [rule.to_dict() for rule in general_rules.rules]
 
 
 def test_classification_context_handles_chapter_without_headings(
     agent: HSClassificationAgent,
+    general_rules: HSGeneralRules,
 ) -> None:
     """A chapter with no headings should yield context with empty headings."""
 
@@ -1117,7 +1164,12 @@ def test_classification_context_handles_chapter_without_headings(
 
     retrieve_headings.assert_called_once()
 
-    (_, chapter_context_arg, _) = agent._classification_analyst.call_args.args
+    (
+        _,
+        chapter_context_arg,
+        general_rules_arg,
+        _,
+    ) = agent._classification_analyst.call_args.args
 
     assert chapter_context_arg == [
         {
@@ -1127,6 +1179,7 @@ def test_classification_context_handles_chapter_without_headings(
             "headings": [],
         }
     ]
+    assert general_rules_arg == [rule.to_dict() for rule in general_rules.rules]
 
 
 def _search_result(chunk_id: str, chapter_number: int, heading_dict: dict):
