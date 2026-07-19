@@ -82,3 +82,48 @@ class ClassificationAnalystSignature(dspy.Signature):
             "max_candidates."
         )
     )
+
+
+class ClassificationAnalyst(dspy.Module):
+    """Produce HS classification candidates using legal reasoning."""
+
+    def __init__(self) -> None:
+        """Initialize the Classification Analyst."""
+
+        super().__init__()
+
+        self.classify = dspy.ChainOfThought(
+            ClassificationAnalystSignature,
+        )
+
+    def forward(
+        self,
+        product_facts: ProductFactsModel,
+        chapter_context: list[dict],
+        general_rules: list[dict],
+        max_candidates: int,
+    ) -> HSClassificationOutputModel:
+        """Classify a product.
+
+        Args:
+            product_facts: Structured product facts extracted from the product
+                description.
+            chapter_context: Relevant HS chapter context including notes and
+                heading hierarchy.
+            general_rules: Compact GIR entries (rule id + text) used for legal
+                interpretation.
+            max_candidates: Maximum number of ranked HS subheading candidates to
+                return.
+
+        Returns:
+            Ranked 6-digit HS code candidates.
+        """
+
+        result = self.classify(
+            product_facts=product_facts,
+            chapter_context=chapter_context,
+            general_rules=general_rules,
+            max_candidates=max_candidates,
+        )
+
+        return result.classification

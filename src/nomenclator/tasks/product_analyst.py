@@ -63,3 +63,44 @@ class ProductAnalystSignature(dspy.Signature):
     product_facts: ProductFactsModel = dspy.OutputField(
         desc="Structured product facts extracted from the description."
     )
+
+
+class ProductAnalyst(dspy.Module):
+    """Extract structured product facts for HS classification.
+
+    The Product Analyst transforms a raw product description into structured
+    information used by downstream retrieval and classification stages.
+
+    It does not perform HS classification.
+    """
+
+    def __init__(self) -> None:
+        """Initialize the Product Analyst."""
+
+        super().__init__()
+
+        self.extract = dspy.Predict(
+            ProductAnalystSignature,
+        )
+
+    def forward(
+        self,
+        description: str,
+        hints: list[str] | None = None,
+    ) -> ProductFactsModel:
+        """Extract product facts.
+
+        Args:
+            description: Raw product description.
+            hints: Optional user-provided HS code hints.
+
+        Returns:
+            Structured product facts.
+        """
+
+        result = self.extract(
+            description=description,
+            hints=hints or [],
+        )
+
+        return result.product_facts

@@ -4,22 +4,14 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from nomenclator.nomenclature.client import NomenclatureClient
 from nomenclator.nomenclature.tree import HSTree
-
-
-@pytest.fixture
-def client() -> NomenclatureClient:  # type: ignore
-    """Provide a live nomenclature client."""
-    with NomenclatureClient() as nomenclature_client:
-        yield nomenclature_client
 
 
 def test_client_does_not_load_tree_on_init() -> None:
     """Construction should not trigger network access."""
     client = NomenclatureClient()
+
     try:
         assert client._tree is None
     finally:

@@ -83,3 +83,59 @@ class ResearchAnalystSignature(dspy.Signature):
             "Candidates must not exceed max_candidates."
         )
     )
+
+
+class ResearchAnalyst(dspy.Module):
+    """Analyze retrieved HS chapter candidates.
+
+    The Research Analyst evaluates retrieval results and produces a ranked
+    shortlist of relevant HS chapter candidates for downstream classification.
+
+    The module does not assign HS codes. It only identifies plausible chapter
+    pathways based on product facts and retrieved nomenclature context.
+    """
+
+    def __init__(
+        self,
+        *,
+        max_candidates: int = 3,
+    ) -> None:
+        """Initialize the Research Analyst.
+
+        Args:
+            max_candidates: Maximum number of relevant HS chapter candidates
+                to return.
+        """
+
+        super().__init__()
+
+        self._max_candidates = max_candidates
+
+        self.analyze = dspy.Predict(
+            ResearchAnalystSignature,
+        )
+
+    def forward(
+        self,
+        product_facts: ProductFactsModel,
+        research_context: HSResearchContext,
+    ) -> HSResearchOutputModel:
+        """Rank relevant HS chapter pathways.
+
+        Args:
+            product_facts: Structured product facts extracted from the product
+                description.
+            research_context: HS legal context containing retrieved candidate
+                chapters grouped by section, including section notes.
+
+        Returns:
+            Ranked HS chapter pathways for downstream classification.
+        """
+
+        result = self.analyze(
+            product_facts=product_facts,
+            research_context=research_context,
+            max_candidates=self._max_candidates,
+        )
+
+        return result.navigation

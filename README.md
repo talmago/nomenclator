@@ -151,13 +151,27 @@ Q: "Men's cotton knitted shirts"
 
 ## Development
 
-Common development commands are available through the project's `Makefile`.
+Install the project dependencies:
 
 ```bash
-make install      # Install dependencies
-make format       # Format the source code
-make lint         # Run static analysis
-make test         # Execute the test suite
+poetry install
+```
+
+Optionally, install **Poe the Poet** globally for shorter commands:
+
+```bash
+pipx install poethepoet
+```
+
+Common development tasks:
+
+```bash
+poe format       # Format and auto-fix the source code
+poe lint         # Run static analysis
+poe typecheck    # Run type checking
+poe test         # Execute the unit test suite
+poe integration  # Execute the integration test suite
+poe check        # Run linting, type checking, and unit tests
 ```
 
 ## Architecture

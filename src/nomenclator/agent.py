@@ -91,8 +91,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import dspy
-
 from nomenclator.exceptions import (
     HSClassificationAnalysisError,
     HSClassificationPipelineError,
@@ -117,152 +115,10 @@ from nomenclator.nomenclature.chapter import HSChapter
 from nomenclator.nomenclature.client import NomenclatureClient
 from nomenclator.nomenclature.tree import HSDocumentRef, HSHeading
 from nomenclator.retrieval.hybrid import RetrievalDocument, Retriever, SearchResult
-from nomenclator.signatures.classification_analyst import ClassificationAnalystSignature
-from nomenclator.signatures.product_analyst import ProductAnalystSignature
-from nomenclator.signatures.research_analyst import ResearchAnalystSignature
+from nomenclator.tasks.classification_analyst import ClassificationAnalyst
+from nomenclator.tasks.product_analyst import ProductAnalyst
+from nomenclator.tasks.research_analyst import ResearchAnalyst
 from nomenclator.usage import ensure_dspy_lm
-
-
-class ProductAnalyst(dspy.Module):
-    """Extract structured product facts for HS classification.
-
-    The Product Analyst transforms a raw product description into structured
-    information used by downstream retrieval and classification stages.
-
-    It does not perform HS classification.
-    """
-
-    def __init__(self) -> None:
-        """Initialize the Product Analyst."""
-
-        super().__init__()
-
-        self.extract = dspy.Predict(
-            ProductAnalystSignature,
-        )
-
-    def forward(
-        self,
-        description: str,
-        hints: list[str] | None = None,
-    ) -> ProductFactsModel:
-        """Extract product facts.
-
-        Args:
-            description: Raw product description.
-            hints: Optional user-provided HS code hints.
-
-        Returns:
-            Structured product facts.
-        """
-
-        result = self.extract(
-            description=description,
-            hints=hints or [],
-        )
-
-        return result.product_facts
-
-
-class ResearchAnalyst(dspy.Module):
-    """Analyze retrieved HS chapter candidates.
-
-    The Research Analyst evaluates retrieval results and produces a ranked
-    shortlist of relevant HS chapter candidates for downstream classification.
-
-    The module does not assign HS codes. It only identifies plausible chapter
-    pathways based on product facts and retrieved nomenclature context.
-    """
-
-    def __init__(
-        self,
-        *,
-        max_candidates: int = 3,
-    ) -> None:
-        """Initialize the Research Analyst.
-
-        Args:
-            max_candidates: Maximum number of relevant HS chapter candidates
-                to return.
-        """
-
-        super().__init__()
-
-        self._max_candidates = max_candidates
-
-        self.analyze = dspy.Predict(
-            ResearchAnalystSignature,
-        )
-
-    def forward(
-        self,
-        product_facts: ProductFactsModel,
-        research_context: HSResearchContext,
-    ) -> HSResearchOutputModel:
-        """Rank relevant HS chapter pathways.
-
-        Args:
-            product_facts: Structured product facts extracted from the product
-                description.
-            research_context: HS legal context containing retrieved candidate
-                chapters grouped by section, including section notes.
-
-        Returns:
-            Ranked HS chapter pathways for downstream classification.
-        """
-
-        result = self.analyze(
-            product_facts=product_facts,
-            research_context=research_context,
-            max_candidates=self._max_candidates,
-        )
-
-        return result.navigation
-
-
-class ClassificationAnalyst(dspy.Module):
-    """Produce HS classification candidates using legal reasoning."""
-
-    def __init__(self) -> None:
-        """Initialize the Classification Analyst."""
-
-        super().__init__()
-
-        self.classify = dspy.ChainOfThought(
-            ClassificationAnalystSignature,
-        )
-
-    def forward(
-        self,
-        product_facts: ProductFactsModel,
-        chapter_context: list[dict],
-        general_rules: list[dict],
-        max_candidates: int,
-    ) -> HSClassificationOutputModel:
-        """Classify a product.
-
-        Args:
-            product_facts: Structured product facts extracted from the product
-                description.
-            chapter_context: Relevant HS chapter context including notes and
-                heading hierarchy.
-            general_rules: Compact GIR entries (rule id + text) used for legal
-                interpretation.
-            max_candidates: Maximum number of ranked HS subheading candidates to
-                return.
-
-        Returns:
-            Ranked 6-digit HS code candidates.
-        """
-
-        result = self.classify(
-            product_facts=product_facts,
-            chapter_context=chapter_context,
-            general_rules=general_rules,
-            max_candidates=max_candidates,
-        )
-
-        return result.classification
 
 
 @dataclass(slots=True)
