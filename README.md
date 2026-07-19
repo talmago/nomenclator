@@ -46,11 +46,11 @@ def main() -> None:
 
     queries = [
         "Men's cotton knitted shirts",
-        "Lithium ion battery pack for electric vehicles",
+        "Lithium ion battery for electric vehicles",
         "Fresh bananas",
     ]
 
-    result = agent.classify(queries[0])
+    result = agent.classify(queries[1])
 
     print("Top classification candidates:\n")
 

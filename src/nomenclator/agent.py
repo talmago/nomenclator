@@ -216,8 +216,8 @@ class HSClassificationAgent:
         *,
         client: NomenclatureClient | None = None,
         embedding_model: str = "minishlab/potion-base-8M",
-        max_retrieved_chapters: int = 10,
-        max_research_chapters: int = 5,
+        max_retrieved_chapters: int = 5,
+        max_research_chapters: int = 3,
         max_classification_chunks: int = 10,
     ) -> None:
         """Initialize the classification agent.

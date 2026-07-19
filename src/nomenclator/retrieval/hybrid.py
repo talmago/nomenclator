@@ -49,12 +49,12 @@ import re
 from typing import TypeVar
 
 import bm25s
-from model2vec import StaticModel
 import numpy as np
 import numpy.typing as npt
 from vicinity.backends.basic import BasicArgs
 
-from nomenclator.retrieval.dense import SelectableBasicBackend, load_model
+from nomenclator.retrieval.dense import SelectableBasicBackend
+from nomenclator.retrieval.embeddings import EmbeddingModel, load_embedding_model
 
 T = TypeVar("T")
 
@@ -102,7 +102,7 @@ class Retriever[T]:
         self,
         documents: Iterable[RetrievalDocument[T]],
         *,
-        model: StaticModel | None = None,
+        model: EmbeddingModel | None = None,
         model_name: str | None = None,
     ) -> None:
         """Initialize the hybrid retriever.
@@ -123,13 +123,14 @@ class Retriever[T]:
         if model is None:
             if model_name is None:
                 raise ValueError("Either model or model_name must be provided")
-            model, _ = load_model(model_name)
+
+            model = load_embedding_model(model_name)
 
         self._model = model
         self._documents = list(documents)
         self._documents_by_id = {document.id: document for document in self._documents}
         self._bm25_index = self._build_bm25_index()
-        self._semantic_index = self._build_semantic_index(model)
+        self._semantic_index = self._build_semantic_index()
 
     def _build_bm25_index(self) -> bm25s.BM25:
         """Build the BM25 lexical retrieval index.
@@ -152,27 +153,20 @@ class Retriever[T]:
 
         return index
 
-    def _build_semantic_index(
-        self,
-        model: StaticModel,
-    ) -> SelectableBasicBackend:
+    def _build_semantic_index(self) -> SelectableBasicBackend:
         """Build the semantic vector retrieval index.
 
         The HS retrieval documents are embedded using the provided static
         embedding model and stored in a cosine similarity backend for semantic
         search.
 
-        Args:
-            model: Static embedding model used to encode retrieval documents.
-
         Returns:
             A cosine similarity vector index containing document embeddings.
         """
 
         embeddings = np.array(
-            model.encode(
+            self._model.encode(
                 [document.content for document in self._documents],
-                use_multiprocessing=False,
             ),
             dtype=np.float32,
         )
