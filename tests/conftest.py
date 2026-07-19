@@ -66,10 +66,10 @@ def agent(general_rules: HSGeneralRules) -> HSClassificationAgent:
     agent = HSClassificationAgent.__new__(HSClassificationAgent)
 
     agent._client = client
-    agent._retrieval_limit = 5
-    agent._model_name = "test-model"
-    agent._max_candidates = 3
-    agent._max_chunks = 20
+    agent._embedding_model = "test-model"
+    agent._max_retrieved_chapters = 5
+    agent._max_research_chapters = 3
+    agent._max_classification_chunks = 20
 
     agent._product_analyst = MagicMock()
     agent._research_analyst = MagicMock()

@@ -251,7 +251,6 @@ def test_classification_context_always_includes_chapter_notes(
         _,
         chapter_context_arg,
         general_rules_arg,
-        _,
     ) = agent._classification_analyst.call_args.args
 
     assert chapter_context_arg == [
@@ -323,7 +322,6 @@ def test_classification_context_handles_chapter_without_headings(
         _,
         chapter_context_arg,
         general_rules_arg,
-        _,
     ) = agent._classification_analyst.call_args.args
 
     assert chapter_context_arg == [

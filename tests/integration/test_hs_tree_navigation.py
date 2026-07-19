@@ -2,9 +2,8 @@
 
 import pytest
 
-from nomenclator.models.search import RetrievalDocument
 from nomenclator.nomenclature.client import NomenclatureClient
-from nomenclator.retrieval import Retriever
+from nomenclator.retrieval.hybrid import RetrievalDocument, Retriever
 
 
 @pytest.fixture(scope="module")

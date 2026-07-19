@@ -12,41 +12,42 @@ class ClassificationAnalystSignature(dspy.Signature):
     Determine the most appropriate HS 6-digit subheading using the product
     facts and relevant HS chapter information.
 
-    The provided chapters were selected by a previous research stage. They are
-    possible classification pathways, not confirmed classifications.
+    The provided chapters and headings were selected by previous retrieval and
+    research stages. They represent possible classification pathways, not
+    confirmed classifications.
 
     You must:
-    - Analyze the product facts together with the provided HS chapters.
+    - Analyze the product facts together with the provided HS context.
     - Identify the correct heading and 6-digit subheading.
-    - Use chapter notes and heading descriptions as primary evidence for
-      scope and coverage.
+    - Use chapter notes and heading descriptions as primary evidence for scope
+      and coverage.
     - Apply the provided General Rules for the Interpretation of the
       Harmonized System (GIR) when resolving conflicts, incomplete or
       unfinished goods, mixtures, composite goods, and packing.
     - Prefer specific classifications over general headings.
-    - Compare competing classifications when ambiguity exists.
-    - Explain why the selected candidates are preferred, citing relevant
-      GIR rules where they affect the decision.
+    - Compare genuinely plausible competing classifications.
+    - Explain why each candidate is supported and why the preferred candidate
+      ranks above the alternatives.
+    - Cite relevant GIR rules when they affect the decision.
 
-    Do not:
-    - Return chapter numbers as final classifications.
-    - Return 4-digit headings as final classifications.
+    You must not:
+    - Return chapter numbers or 4-digit headings as final classifications.
     - Classify based only on keyword similarity.
     - Assume the highest-ranked retrieved chapter is correct.
     - Ignore exclusions, legal notes, or applicable GIR rules.
+    - Include weakly supported or speculative alternatives.
 
     Scoring:
-    - Assign each candidate a confidence score between 0.0 and 1.0, where 1.0
-      means highest confidence in the classification.
-    - Scores must never fall outside the 0.0-1.0 range.
+    - Assign each candidate a confidence score between 0.0 and 1.0.
+    - Scores must reflect relative confidence and must not exceed that range.
 
     Output:
-    - Return up to max_candidates ranked 6-digit HS subheading candidates.
-    - When competing classification pathways are plausible, include them as
-      additional ranked candidates (even at lower confidence) so the strongest
-      alternatives remain visible. Return fewer than max_candidates only when a
-      single classification is unambiguously correct.
-    - Include clear legal reasoning for each candidate.
+    - Return ranked 6-digit HS subheading candidates.
+    - Return the strongest supported classification first.
+    - Include additional candidates only when a meaningful competing
+      classification remains plausible.
+    - Return a single candidate when the classification is unambiguous.
+    - Include concise legal reasoning for each candidate.
     """
 
     product_facts: ProductFactsModel = dspy.InputField(
@@ -56,30 +57,21 @@ class ClassificationAnalystSignature(dspy.Signature):
     general_rules: list[dict] = dspy.InputField(
         desc=(
             "General Rules for the Interpretation of the Harmonized System "
-            "(GIR). Each entry has rule id and full rule text."
+            "(GIR). Each entry contains the rule identifier and full text."
         )
     )
 
     chapter_context: list[dict] = dspy.InputField(
         desc=(
-            "Relevant HS chapter context including chapter metadata, notes, "
-            "and heading hierarchy."
-        )
-    )
-
-    max_candidates: int = dspy.InputField(
-        desc=(
-            "Maximum number of ranked HS subheading candidates to return. "
-            "Include competing alternatives up to this limit; return fewer "
-            "only when a single classification is unambiguously correct."
+            "Relevant HS chapter context containing chapter metadata, legal "
+            "notes, and the retrieved heading hierarchy."
         )
     )
 
     classification: HSClassificationOutputModel = dspy.OutputField(
         desc=(
-            "Ranked 6-digit HS subheading candidates with legal reasoning and "
-            "confidence scores between 0.0 and 1.0. Candidates must not exceed "
-            "max_candidates."
+            "Ranked 6-digit HS subheading candidates with concise legal "
+            "reasoning and confidence scores between 0.0 and 1.0."
         )
     )
 
@@ -101,7 +93,6 @@ class ClassificationAnalyst(dspy.Module):
         product_facts: ProductFactsModel,
         chapter_context: list[dict],
         general_rules: list[dict],
-        max_candidates: int,
     ) -> HSClassificationOutputModel:
         """Classify a product.
 
@@ -112,8 +103,6 @@ class ClassificationAnalyst(dspy.Module):
                 heading hierarchy.
             general_rules: Compact GIR entries (rule id + text) used for legal
                 interpretation.
-            max_candidates: Maximum number of ranked HS subheading candidates to
-                return.
 
         Returns:
             Ranked 6-digit HS code candidates.
@@ -123,7 +112,6 @@ class ClassificationAnalyst(dspy.Module):
             product_facts=product_facts,
             chapter_context=chapter_context,
             general_rules=general_rules,
-            max_candidates=max_candidates,
         )
 
         return result.classification

@@ -215,59 +215,46 @@ class HSClassificationAgent:
         self,
         *,
         client: NomenclatureClient | None = None,
-        model_name: str = "minishlab/potion-base-8M",
-        retrieval_limit: int = 5,
-        max_candidates: int = 3,
-        max_chunks: int = 10,
+        embedding_model: str = "minishlab/potion-base-8M",
+        max_retrieved_chapters: int = 10,
+        max_research_chapters: int = 5,
+        max_classification_chunks: int = 10,
     ) -> None:
         """Initialize the classification agent.
 
         Args:
-            client: HS nomenclature client.
+            client:
+                HS nomenclature client.
 
-            model_name: Embedding model used by the retrievers.
+            model_name:
+                Embedding model used by the retrievers.
 
-            retrieval_limit: Maximum number of HS chapters retrieved by the hybrid
-                retriever and passed to the research analyst.
+            max_retrieved_chapters:
+                Maximum number of chapters retrieved and passed to the Research
+                Analyst.
 
-            max_candidates: Maximum number of candidates returned at each
-                ranking stage. It caps both the HS chapter pathways shortlisted
-                by the research analyst and the ranked HS subheading candidates
-                returned by the classification analyst. A larger value surfaces
-                more competing classification pathways but increases prompt
-                size and cost.
+            max_research_chapters:
+                Maximum number of chapter pathways shortlisted by the Research
+                Analyst for classification analysis.
 
-            max_chunks: Global budget for the total number of heading chunks
-                loaded into the Classification Analyst prompt across all
-                shortlisted chapters. All shortlisted chapters are split into
-                heading-level chunks and indexed together by a single retriever;
-                only the ``max_chunks`` most relevant chunks overall are kept
-                instead of loading the whole chapters. Each shortlisted chapter
-                is guaranteed at least one heading chunk (when it has any), so
-                the Research Analyst's shortlisting is respected. This trades
-                classification accuracy against model cost: a smaller value
-                yields a more compact prompt and lower token cost but risks
-                dropping the heading that contains the correct 6-digit
-                subheading, while a larger value improves recall of the
-                relevant heading at the expense of a larger prompt. Because the
-                budget is global, it bounds the total context size regardless of
-                how many chapters were shortlisted or how dense they are.
-                Defaults to ``10``.
+            max_classification_chunks:
+                Global maximum number of heading-level chunks included in the
+                Classification Analyst context across all shortlisted chapters.
         """
-        if retrieval_limit <= 0:
-            raise ValueError("retrieval_limit must be greater than zero")
+        if max_retrieved_chapters <= 0:
+            raise ValueError("max_retrieved_chapters must be greater than zero")
 
-        if max_candidates <= 0:
+        if max_research_chapters <= 0:
             raise ValueError("max_candidates must be greater than zero")
 
-        if max_chunks <= 0:
+        if max_classification_chunks <= 0:
             raise ValueError("max_chunks must be greater than zero")
 
         self._client = client or NomenclatureClient()
-        self._retrieval_limit = retrieval_limit
-        self._model_name = model_name
-        self._max_candidates = max_candidates
-        self._max_chunks = max_chunks
+        self._embedding_model = embedding_model
+        self._max_retrieved_chapters = max_retrieved_chapters
+        self._max_research_chapters = max_research_chapters
+        self._max_classification_chunks = max_classification_chunks
 
         try:
             self._tree = self._client.get_tree()
@@ -277,7 +264,7 @@ class HSClassificationAgent:
             ) from exc
 
         self._product_analyst = ProductAnalyst()
-        self._research_analyst = ResearchAnalyst(max_candidates=max_candidates)
+        self._research_analyst = ResearchAnalyst(max_candidates=max_research_chapters)
         self._classification_analyst = ClassificationAnalyst()
 
     def classify(
@@ -376,7 +363,6 @@ class HSClassificationAgent:
                 facts,
                 chapter_context,
                 general_rules,
-                self._max_candidates,
             )
         except Exception as exc:
             raise HSClassificationAnalysisError(
@@ -528,10 +514,11 @@ class HSClassificationAgent:
         documents = [
             RetrievalDocument(
                 id=chapter.ref,
-                content=self._chapter_content(
-                    section_label=section.label,
-                    section_title=section.title,
-                    chapter=chapter,
+                content=(
+                    f"{section.label}\n"
+                    f"{section.title}\n\n"
+                    f"Chapter {chapter.ref}\n"
+                    f"{chapter.title}"
                 ),
                 payload=chapter,
             )
@@ -542,13 +529,13 @@ class HSClassificationAgent:
 
         retriever = Retriever(
             documents,
-            model_name=self._model_name,
+            model_name=self._embedding_model,
         )
 
         return retriever.search(
             description,
             keywords=keywords,
-            limit=self._retrieval_limit,
+            limit=self._max_retrieved_chapters,
         )
 
     def _retrieve_headings(
@@ -594,7 +581,7 @@ class HSClassificationAgent:
 
         retriever = Retriever(
             all_chunks,
-            model_name=self._model_name,
+            model_name=self._embedding_model,
         )
 
         results: list[SearchResult[HSHeading]] = retriever.search(
@@ -607,7 +594,7 @@ class HSClassificationAgent:
             results,
             chunk_to_chapter=chunk_to_chapter,
             chapters_with_chunks=chapters_with_chunks,
-            budget=self._max_chunks,
+            budget=self._max_classification_chunks,
         )
 
     @staticmethod
@@ -704,33 +691,6 @@ class HSClassificationAgent:
             )
             for heading in chapter.headings
         ]
-
-    @staticmethod
-    def _chapter_content(
-        *,
-        section_label: str,
-        section_title: str,
-        chapter: HSDocumentRef,
-    ) -> str:
-        """Build the indexed content for an HS chapter.
-
-        The content is designed for semantic and lexical retrieval rather than
-        presentation. It combines the section and chapter titles into a concise,
-        natural-language document.
-
-        Args:
-            section_label: HS section label (for example, ``"SECTION XI"``).
-            section_title: HS section title.
-            chapter: Chapter reference.
-
-        Returns:
-            Indexed content for the retrieval document.
-        """
-
-        return (
-            f"{section_label}\n{section_title}"
-            f"\n\nChapter {chapter.ref}\n{chapter.title}"
-        )
 
     @staticmethod
     def _heading_chunk_content(heading: HSHeading) -> str:

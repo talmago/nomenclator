@@ -74,8 +74,8 @@ def test_retrieve_candidate_chapters_builds_documents() -> None:
     agent = HSClassificationAgent.__new__(
         HSClassificationAgent,
     )
-    agent._model_name = "test-model"
-    agent._retrieval_limit = 5
+    agent._embedding_model = "test-model"
+    agent._max_retrieved_chapters = 5
 
     chapter = MagicMock(
         ref="0101-2022E",
@@ -127,8 +127,8 @@ def test_retrieve_chapters_skips_chapters_without_refs() -> None:
     """Chapters without a reference should be excluded from the retriever."""
 
     agent = HSClassificationAgent.__new__(HSClassificationAgent)
-    agent._model_name = "test-model"
-    agent._retrieval_limit = 5
+    agent._embedding_model = "test-model"
+    agent._max_retrieved_chapters = 5
 
     valid = MagicMock(ref="0101-2022E")
     invalid = MagicMock(ref=None)

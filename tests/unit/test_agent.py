@@ -144,10 +144,7 @@ def test_agent_runs_complete_pipeline(
         _facts_arg,
         chapter_context_arg,
         general_rules_arg,
-        max_candidates_arg,
     ) = classification_call.args
-
-    assert max_candidates_arg == agent._max_candidates
 
     assert chapter_context_arg == [
         {
