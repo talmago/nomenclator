@@ -1,7 +1,7 @@
 [project]
-name = "nomenclator"
+name = "dspy-nomenclator"
 version = "0.1.0"
-description = "Production-grade library for explainable HS code classification using structured retrieval and LLM reasoning."
+description = "Production-grade DSPy library for explainable HS code classification."
 authors = [
     {name = "Tal Almagor",email = "almagoric@gmail.com"}
 ]
@@ -83,6 +83,11 @@ dev = [
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+packages = [
+    { include = "nomenclator", from = "src" }
+]
 
 [tool.poe.tasks]
 format = [

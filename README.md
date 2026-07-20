@@ -1,8 +1,10 @@
-# Nomenclator
+# DSPy Nomenclator
 
-**Nomenclator** is a Python library for Harmonized System (HS) classification that combines deterministic retrieval over the official HS nomenclature with structured LLM reasoning.
+**DSPy Nomenclator** is a Python library for explainable Harmonized System (HS) code classification built on DSPy. 
 
-The library uses a multi-stage pipeline to progressively narrow the search space—from product analysis, through chapter and heading retrieval, to legally grounded HS classification.
+It combines deterministic retrieval over the official HS nomenclature with structured LLM reasoning to produce accurate, transparent, and legally grounded classifications.
+
+The library uses a multi-stage retrieval and reasoning pipeline to progressively narrow the search space—from product analysis, through chapter and heading retrieval, to final HS code classification with supporting rationale.
 
 ## Features
 
@@ -16,7 +18,7 @@ The library uses a multi-stage pipeline to progressively narrow the search space
 ## Installation
 
 ```bash
-pip install nomenclator
+pip install dspy-nomenclator
 ```
 
 Configure an OpenAI-compatible API key before running DSPy.
