@@ -1,16 +1,17 @@
 # Nomenclator
 
-**Nomenclator** is a Python library for Harmonized System (HS) classification using hybrid retrieval and LLM reasoning.
+**Nomenclator** is a Python library for Harmonized System (HS) classification that combines deterministic retrieval over the official HS nomenclature with structured LLM reasoning.
 
-The project combines deterministic retrieval over the official HS nomenclature with DSPy-based reasoning modules to produce legally grounded HS classification candidates.
+The library uses a multi-stage pipeline to progressively narrow the search space—from product analysis, through chapter and heading retrieval, to legally grounded HS classification.
 
 ## Features
 
-* 📚 Parses the official HS nomenclature into a structured tree
-* 🔎 Hybrid semantic + BM25 retrieval over HS chapters
-* 🤖 DSPy-based multi-stage classification pipeline
-* ⚖️ Structured legal reasoning over chapter notes and headings
-* 🧩 Modular architecture with independently testable components
+- 🌳 Parses the official HS 2022 nomenclature into a structured tree
+- 🔎 Two-stage hybrid retrieval over chapters and headings (semantic + BM25)
+- 🤖 Multi-stage DSPy pipeline for product analysis, research, and classification
+- ⚖️ Applies chapter notes and the General Rules for Interpretation (GIR) during classification
+- 📊 Built-in benchmarking framework for evaluating classification quality
+- 🧩 Modular architecture with typed intermediate models and independently testable components
 
 ## Installation
 
@@ -28,74 +29,53 @@ export OPENAI_API_KEY=...
 
 ## Quick Start
 
-```python
-import dspy
+Install the package and classify a product directly from the command line:
 
-from nomenclator import HSClassificationAgent, calc_usage
-
-# Configure DSPy
-lm = dspy.LM("openai/gpt-4.1-mini")
-dspy.configure(lm=lm)
-
-def main() -> None:
-    """Run a simple HS classification example."""
-
-    agent = HSClassificationAgent()
-
-    queries = [
-        "Men's cotton knitted shirts",
-        "Lithium ion battery for electric vehicles",
-        "Fresh bananas",
-    ]
-
-    result = agent.classify(queries[1])
-
-    print("Top classification candidates:\n")
-
-    for i, candidate in enumerate(result.candidates, start=1):
-        print(f"{i}. {candidate.code} — {candidate.description}")
-        print(f"   Score: {candidate.score:.2f}")
-        print(f"   Source chapter: {candidate.source_chapter}")
-        print("   Reasoning:")
-
-        for reason in candidate.reasoning:
-            print(f"     • {reason}")
-
-        print()
-
-    usage = calc_usage(lm.history)
-
-    print("Token usage")
-    print(f"  Prompt tokens:     {usage.prompt_tokens:,}")
-    print(f"  Completion tokens: {usage.completion_tokens:,}")
-    print(f"  Total tokens:      {usage.total_tokens:,}")
-    print(f"  Estimated cost:    ${usage.cost:.5f}")
-
-
-if __name__ == "__main__":
-    main()
+```bash
+nomenclator "Men's cotton knitted shirts"
 ```
 
 Example output:
 
 ```text
-Top classification candidates:
+╭────────────────────────────────────────────────────────────────────────╮
+│ Nomenclator (openai/gpt-4.1-mini)                                      │
+╰────────────────────────────────────────────────────────────────────────╯
 
-1. 8507.60 — Electric accumulators, including separators therefor, whether or not rectangular (including square) — Lithium-ion
-   Score: 1.00
-   Source chapter: 8585-2022E
-   Reasoning:
-     • Product is a lithium-ion rechargeable battery, an electric accumulator.
-     • Heading 85.07 covers electric accumulators; 8507.60 specifically covers lithium-ion accumulators.
-     • No other heading offers a more specific or appropriate classification.
-     • GIR 3(a) favors the most specific applicable heading, which is 8507.60.
+Product
+  Men's cotton knitted shirts
 
-Token usage
-  Prompt tokens:     15,406
-  Completion tokens: 530
-  Total tokens:      15,936
-  Estimated cost:    $0.00701
+╭───────────── Best Classification────────────────────────────╮
+│ HS Code       6105.10                                       │
+│ Confidence    1.00                                          │
+│ Description   Men's or boys' shirts, knitted or crocheted — Of cotton  │
+│ Chapter       6101-2022E                                    │
+╰─────────────────────────────────────────────────────────────╯
+
+Reasoning
+├── Product is a knitted cotton shirt for men, matching heading 61.05 and subheading 6105.10 criteria.
+├── Chapter 61 notes specify applicability to knitted or crocheted garments, confirming the correct chapter.
+├── Heading 61.05 is the most specific heading for men's knitted shirts, consistent with GIR 3(a).
+├── Other headings, including those for woven shirts or women's garments, do not apply.
+└── No competing heading provides a more specific classification.
+
+╭─────────────────────── Performance ────────────────────────╮
+│ Prompt tokens          18,053                              │
+│ Completion tokens      648                                 │
+│ Total tokens           18,701                              │
+│ Estimated cost        $0.00826                             │
+╰────────────────────────────────────────────────────────────╯
 ```
+
+The CLI also accepts input from standard input:
+
+```bash
+echo "Fresh bananas" | nomenclator
+```
+
+Run `nomenclator --help` to see all available options.
+
+---
 
 ## How it works
 
@@ -204,14 +184,18 @@ and agent responsibilities, see:
 
 ## Roadmap
 
-Planned improvements include:
+Completed:
 
-* Heading- and subheading-level retrieval
-* DSPy optimization using evaluation datasets
-* Additional embedding model support
-* Alternative retrieval backends
-* Classification benchmarking and evaluation
-* Optional audit stage for reviewing classification results
+- ✅ Two-stage hybrid retrieval (chapter and heading levels)
+- ✅ Multiple embedding backends (Sentence Transformers and FastEmbed)
+- ✅ Classification benchmarking and evaluation framework
+
+Planned improvements:
+
+- DSPy optimization using evaluation datasets
+- Interactive terminal UI (TUI) for product classification and result exploration
+- Optional audit stage for reviewing classification results
+- Support for additional customs nomenclatures (e.g. TARIC, HTSUS)
 
 ## License
 

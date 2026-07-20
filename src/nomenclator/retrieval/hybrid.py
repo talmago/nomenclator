@@ -149,7 +149,7 @@ class Retriever[T]:
 
         index = bm25s.BM25()
 
-        index.index(corpus_tokens)
+        index.index(corpus_tokens, show_progress=False)
 
         return index
 
