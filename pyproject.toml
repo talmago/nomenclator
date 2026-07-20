@@ -5,6 +5,32 @@ description = "Production-grade library for explainable HS code classification u
 authors = [
     {name = "Tal Almagor",email = "almagoric@gmail.com"}
 ]
+license = "MIT"
+license-files = ["LICENSE"]
+readme = "README.md"
+requires-python = ">=3.13,<3.15"
+
+keywords = [
+    "hs",
+    "hs-code",
+    "harmonized-system",
+    "customs",
+    "customs-classification",
+    "tariff",
+    "trade",
+    "international-trade",
+    "logistics",
+    "supply-chain",
+    "ai",
+    "llm",
+    "agents",
+    "agentic-ai",
+    "dspy",
+    "retrieval",
+    "rag",
+    "semantic-search",
+]
+
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -20,9 +46,7 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
-license = {text = "MIT"}
-readme = "README.md"
-requires-python = ">=3.13,<3.15"
+
 dependencies = [
     "dspy-ai (>=3.2.1,<4.0.0)",
     "pydantic (>=2.13.4,<3.0.0)",
@@ -35,9 +59,13 @@ dependencies = [
     "rich (>=15.0.0,<16.0.0)",
 ]
 
-[build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
-build-backend = "poetry.core.masonry.api"
+[project.urls]
+Homepage = "https://github.com/talmago/nomenclator"
+Repository = "https://github.com/talmago/nomenclator"
+Issues = "https://github.com/talmago/nomenclator/issues"
+
+[project.scripts]
+nomenclator = "nomenclator.cli:main"
 
 [dependency-groups]
 dev = [
@@ -47,12 +75,14 @@ dev = [
     "ruff (>=0.15.21,<0.16.0)",
     "mypy (>=2.2.0,<3.0.0)",
     "pre-commit (>=4.6.0,<5.0.0)",
-    "poethepoet (>=0.48.0,<0.49.0)"
+    "poethepoet (>=0.48.0,<0.49.0)",
+    "twine (>=6.2.0,<7.0.0)",
+    "build (>=1.5.0,<2.0.0)"
 ]
 
-[project.scripts]
-nomenclator = "nomenclator.cli:main"
-
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
 
 [tool.poe.tasks]
 format = [
@@ -72,6 +102,10 @@ check = [
     { ref = "typecheck" },
     { ref = "test" },
 ]
+
+build = "python -m build"
+
+publish-check = "twine check dist/*"
 
 [tool.ruff]
 line-length = 88

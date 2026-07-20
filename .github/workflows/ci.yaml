@@ -26,29 +26,24 @@ jobs:
 
       - name: Install Poetry
         run: |
-          pip install poetry
+          pip install poetry poethepoet
 
       - name: Install dependencies
         run: |
-          poetry install
+          poetry install --with dev
 
-      - name: Run Ruff
+      - name: Run checks
         run: |
-          poetry run ruff check .
+          poe check
 
-      - name: Run unit tests
-        run: |
-          poetry run pytest tests/unit -m "not integration"
-
-
-  release:
-    name: Build release
+  publish:
+    name: Publish to PyPI
     needs: test
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write
+      id-token: write
 
     steps:
       - name: Checkout repository
@@ -65,13 +60,16 @@ jobs:
 
       - name: Install dependencies
         run: |
-          poetry install
+          poetry install --with dev
 
       - name: Build package
         run: |
-          poetry build
+          poetry run poe build
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
+      - name: Verify distributions
+        run: |
+          poetry run poe publish-check
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+  
