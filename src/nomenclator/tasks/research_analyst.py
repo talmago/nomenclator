@@ -1,72 +1,55 @@
 import dspy
 
-from nomenclator.models.navigation import HSResearchContext, HSResearchOutputModel
+from nomenclator.models.navigation import (
+    HSResearchContext,
+    HSResearchSelectionOutputModel,
+)
 from nomenclator.models.product_facts import ProductFactsModel
 
 
 class ResearchAnalystSignature(dspy.Signature):
-    """Evaluate HS chapter pathways for further classification analysis.
+    """Select the most plausible HS chapters for detailed classification.
 
-    You are an HS Research Analyst specializing in Harmonized System (HS 2022)
-    nomenclature.
+    You are an HS Research Analyst specializing in HS 2022 nomenclature.
 
-    Your role is to analyze structured product facts together with retrieved HS
-    chapter context and identify the most plausible chapter pathways for the
-    Classification Analyst.
+    Analyze the structured product facts together with the retrieved HS context
+    and select the chapter pathways that the Classification Analyst should
+    examine next.
 
-    Retrieved candidates are produced by a hybrid semantic and lexical retrieval
-    system optimized for high recall. They intentionally include competing and
-    potentially irrelevant chapters. Retrieval ranking is only a weak signal and
-    must never be treated as evidence of correct classification.
+    The retrieved context is produced by a high-recall hybrid search. It may
+    contain irrelevant chapters and may not contain the ideal chapter.
+    Retrieval rank and keyword similarity are weak signals only.
 
-    The provided context may include:
-    - HS section information;
-    - section notes containing legal scope, inclusions, exclusions, and
-      definitions;
-    - chapter information and structural context.
+    Base your analysis primarily on:
 
-    Consider:
     - the product's essential nature;
-    - function, material, composition, and other extracted product facts;
-    - intended use only when legally relevant;
-    - the scope and wording of HS sections and chapters;
-    - section-level exclusions or restrictions;
-    - competing chapters and alternative classification pathways.
+    - function, material, composition, and other product facts;
+    - chapter and section scope;
+    - legally relevant section notes, definitions, and exclusions;
+    - whether the chapter describes the product itself rather than merely its
+      application, host equipment, or end use.
 
-    Product-first guidance:
-    - Prefer chapters describing the product itself over chapters describing
-      its end use or application.
-    - Do not assume products are classified according to the equipment in which
-      they are used unless the nomenclature explicitly requires it.
-    - Distinguish between the product being classified and the system,
-      machine, or vehicle that incorporates it.
+    Eliminate clearly incompatible chapters and rank the remaining pathways
+    from most to least plausible.
 
-    Section notes guidance:
-    - Treat section notes as legally relevant context.
-    - Use section notes to eliminate chapters that fall outside the legal scope
-      of the section.
-    - Prefer chapters that remain consistent with section-level rules.
-    - Highlight when section notes create uncertainty or require deeper review.
+    Select the best available pathways from the provided context even when none
+    appears definitive. Return no candidates only when every retrieved chapter
+    is clearly incompatible with the product.
 
-    You must:
-    - analyze product facts and HS context together;
-    - aggressively eliminate irrelevant chapter pathways;
-    - rank the remaining chapter pathways by plausibility;
-    - explain why each selected pathway is relevant;
-    - identify meaningful competing pathways only when they are genuinely plausible.
+    Do not:
 
-    You must not:
-    - assign HS codes below chapter level;
-    - make final classification decisions;
-    - apply General Rules for Interpretation (GIR);
-    - rely primarily on retrieval scores or keyword similarity;
-    - include weakly supported or speculative chapters.
+    - assign an HS code below chapter level;
+    - make the final classification decision;
+    - apply the General Rules for Interpretation;
+    - invent chapter references;
+    - return chapters that are only weakly related by terminology or end use.
 
     Output requirements:
-    - Return no more than max_candidates results.
-    - Return fewer candidates when fewer pathways are genuinely supported.
-    - Rank candidates from most to least plausible.
-    - Provide concise reasoning for each selected candidate.
+
+    - Return only chapter references present in research_context.
+    - Return at most ``max_candidates`` results.
+    - Rank results from most to least plausible.
+    - Return only chapter references, without titles, scores, or reasoning.
     """
 
     product_facts: ProductFactsModel = dspy.InputField(
@@ -87,11 +70,8 @@ class ResearchAnalystSignature(dspy.Signature):
         )
     )
 
-    navigation: HSResearchOutputModel = dspy.OutputField(
-        desc=(
-            "Ranked HS chapter pathways with confidence scores and reasoning. "
-            "Candidates must not exceed max_candidates."
-        )
+    navigation: HSResearchSelectionOutputModel = dspy.OutputField(
+        desc=("Ranked chapter references selected from research_context.")
     )
 
 
@@ -108,13 +88,12 @@ class ResearchAnalyst(dspy.Module):
     def __init__(
         self,
         *,
-        max_candidates: int = 5,
+        max_candidates: int = 3,
     ) -> None:
         """Initialize the Research Analyst.
 
         Args:
-            max_candidates: Maximum number of relevant HS chapter candidates
-                to return.
+            max_candidates: Maximum number of chapter references to return.
         """
 
         super().__init__()
@@ -129,17 +108,15 @@ class ResearchAnalyst(dspy.Module):
         self,
         product_facts: ProductFactsModel,
         research_context: HSResearchContext,
-    ) -> HSResearchOutputModel:
+    ) -> HSResearchSelectionOutputModel:
         """Rank relevant HS chapter pathways.
 
         Args:
-            product_facts: Structured product facts extracted from the product
-                description.
-            research_context: HS legal context containing retrieved candidate
-                chapters grouped by section, including section notes.
+            product_facts: Structured product facts.
+            research_context: Retrieved HS chapter and section context.
 
         Returns:
-            Ranked HS chapter pathways for downstream classification.
+            Minimal ranked chapter selections.
         """
 
         result = self.analyze(

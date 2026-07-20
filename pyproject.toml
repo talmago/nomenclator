@@ -57,7 +57,7 @@ format = [
 
 lint = "ruff check ."
 typecheck = "mypy src"
-test = "pytest tests/unit -m 'not integration'"
+test = "pytest tests/unit"
 integration = "pytest tests/integration"
 
 check = [

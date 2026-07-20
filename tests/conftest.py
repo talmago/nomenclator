@@ -100,12 +100,18 @@ def chapter_mock():
         chapter_number: int = 85,
         title: str = "Electrical machinery and equipment",
         ref: str = "8501-2022E",
+        url: str = (
+            "https://www.wcoomd.org/-/media/wco/public/global/pdf/topics/"
+            "nomenclature/instruments-and-tools/hs-nomenclature-2022/2022/"
+            "8501-2022e.pdf?la=en"
+        ),
         notes: list | None = None,
     ) -> MagicMock:
         chapter = MagicMock()
         chapter.chapter_number = chapter_number
         chapter.title = title
         chapter.document.ref = ref
+        chapter.document.url = url
         chapter.notes = notes if notes is not None else []
         chapter.headings = []
         return chapter

@@ -18,7 +18,7 @@ Raw product description
         |
         v
 +--------------------------------+
-| HS Navigation Document Builder  |
+| HS Navigation Document Builder |
 +--------------------------------+
         |
         v
@@ -33,9 +33,9 @@ RetrievalDocument[HSDocumentRef][]
 SearchResult[HSDocumentRef][]
         |
         v
-+------------------------+
++-------------------------+
 | Research Context Builder|
-+------------------------+
++-------------------------+
         |
         v
   HSResearchContext
@@ -46,7 +46,15 @@ SearchResult[HSDocumentRef][]
 +------------------+
         |
         v
-ResearchCandidateModel[]
+HSResearchSelectionOutputModel
+        |
+        v
++--------------------------------+
+| Classification Context Builder |
++--------------------------------+
+        |
+        v
+ HSClassificationContext
         |
         v
 +-------------------------+
@@ -54,7 +62,15 @@ ResearchCandidateModel[]
 +-------------------------+
         |
         v
-HSCodeCandidateModel[]
+HSClassificationSelectionOutputModel
+        |
+        v
++------------------------------+
+| Classification Result Builder|
++------------------------------+
+        |
+        v
+HSClassificationOutputModel
 ```
 
 The Product Analyst extracts structured product facts from the raw product
@@ -68,19 +84,21 @@ The Research Context Builder groups retrieved chapters by HS section and
 enriches them with the corresponding section notes, providing legal context
 for pathway selection without loading full chapter documents.
 
-The Research Analyst evaluates the retrieved context, filters irrelevant
-chapters, and identifies the most plausible HS classification pathways.
+The Research Analyst evaluates the retrieved context and selects the most
+plausible HS chapters for detailed analysis.
 
-The Classification Analyst loads only the shortlisted chapters, splits each
-chapter into heading-level chunks, and indexes all chunks from all
-shortlisted chapters together in a single hybrid retriever. Only the globally
-most relevant chunks are kept, bounded by a global chunk budget
-(``max_chunks``), with each shortlisted chapter guaranteed at least one
-heading chunk. Chapter notes are always included in full. The analyst then
-performs detailed legal classification over this compacted context to
-produce ranked HS code candidates. Capping the total number of chunks keeps
-the Classification Analyst prompt compact even for very long or dense
-chapters and regardless of how many chapters were shortlisted.
+The Classification Context Builder loads only the shortlisted chapters,
+retrieves the most relevant heading hierarchy for each chapter, combines it
+with the General Rules for the Interpretation of the Harmonized System (GIR),
+and produces a compact classification context.
+
+The Classification Analyst performs detailed legal reasoning over this context
+and returns ranked HS code selections together with confidence scores and
+supporting reasoning.
+
+Finally, the Classification Result Builder enriches the selected HS codes with
+their canonical descriptions and source chapters from the classification
+context to produce the final structured output.
 
 The retrieval layer is deterministic and independent from LLM reasoning,
 allowing retrieval quality and classification reasoning to be evaluated
@@ -100,20 +118,26 @@ from nomenclator.exceptions import (
     HSResearchAnalysisError,
 )
 from nomenclator.models.classification import (
+    HSClassificationChapterContext,
+    HSClassificationContext,
+    HSClassificationHeadingContext,
     HSClassificationOutputModel,
+    HSClassificationSelectionOutputModel,
+    HSClassificationSubheadingContext,
     HSCodeCandidateModel,
 )
 from nomenclator.models.navigation import (
-    HSResearchCandidateModel,
     HSResearchChapterContext,
     HSResearchContext,
-    HSResearchOutputModel,
     HSResearchSectionContext,
+    HSResearchSelectionOutputModel,
 )
 from nomenclator.models.product_facts import ProductFactsModel
 from nomenclator.nomenclature.chapter import HSChapter
 from nomenclator.nomenclature.client import NomenclatureClient
+from nomenclator.nomenclature.parser import _chapter_ref_from_number
 from nomenclator.nomenclature.tree import HSDocumentRef, HSHeading
+from nomenclator.nomenclature.urls import chapter_url_from_ref
 from nomenclator.retrieval.hybrid import RetrievalDocument, Retriever, SearchResult
 from nomenclator.tasks.classification_analyst import ClassificationAnalyst
 from nomenclator.tasks.product_analyst import ProductAnalyst
@@ -132,7 +156,6 @@ class HSClassificationResult:
 
     Attributes:
         facts: Structured product facts extracted by the Product Analyst.
-        keywords: Retrieval keywords derived from the product facts.
         retrieved: Raw chapter retrieval results from the Nomenclature
             Retriever (semantic + BM25 hybrid search).
         navigation: Ranked chapter candidates produced by the Research
@@ -142,9 +165,8 @@ class HSClassificationResult:
     """
 
     facts: ProductFactsModel
-    keywords: list[str]
     retrieved: list[SearchResult[HSDocumentRef]]
-    navigation: HSResearchOutputModel
+    navigation: HSResearchSelectionOutputModel
     classification: HSClassificationOutputModel
 
     @property
@@ -172,43 +194,43 @@ class HSClassificationAgent:
         Product facts
                 |
                 v
-        HS navigation document retrieval
-                |
-                v
-        Hybrid Retriever
+        Navigation Retriever
                 |
                 v
         Candidate HS chapters
                 |
                 v
+        Research Context Builder
+                |
+                v
         Research Analyst
                 |
                 v
-        Ranked chapter candidates
+        Selected chapter references
                 |
                 v
-        Classification context builder
-        (global heading-chunk budget)
+        Classification Context Builder
                 |
                 v
         Classification Analyst
                 |
                 v
-        HS code candidates
+        Ranked HS code candidates
 
-    The navigation retrieval layer is deterministic and uses semantic and lexical
-    search over HS nomenclature documents. It is independent from LLM reasoning.
+    The pipeline combines deterministic retrieval with LLM reasoning.
 
-    After the Research Analyst shortlists chapters, the classification context
-    builder splits each shortlisted chapter into heading-level chunks and indexes
-    them together in a single hybrid retriever. Only the globally most relevant
-    chunks are kept, bounded by ``max_chunks``, with each shortlisted chapter
-    guaranteed at least one heading chunk; chapter notes are always included in
-    full. This keeps the Classification Analyst prompt compact regardless of how
-    many chapters were shortlisted or how dense they are.
+    The navigation retriever performs high-recall semantic and lexical search
+    over the HS nomenclature to identify potentially relevant chapters. The
+    Research Analyst then eliminates irrelevant pathways and selects the most
+    plausible chapters for further analysis.
 
-    DSPy modules are responsible for analyzing retrieved context, applying HS
-    classification logic, and producing ranked classification candidates.
+    The Classification Context Builder retrieves the most relevant headings from
+    the selected chapters, always preserving chapter notes while keeping the
+    prompt within a configurable context budget.
+
+    Finally, the Classification Analyst identifies the most plausible HS codes
+    from the provided context. The application then resolves the selected codes
+    into the canonical classification output.
     """
 
     def __init__(
@@ -282,8 +304,7 @@ class HSClassificationAgent:
         Returns:
             End-to-end classification result, including the final ranked HS
             code candidates (``.candidates``) and the intermediate artifacts
-            from each upstream stage (facts, keywords, retrieved chapters,
-            and navigation).
+            from each upstream stage (facts, retrieved chapters and navigation).
 
         Raises:
             HSInitializationError: If no DSPy language model is configured.
@@ -307,15 +328,7 @@ class HSClassificationAgent:
         # Step 2: Retrieval
         # --------------------------------------------------
 
-        keywords = self._retrieval_keywords(
-            facts,
-            user_hs_codes,
-        )
-
-        retrieved = self._retrieve_chapters(
-            facts.normalized_description,
-            keywords=keywords,
-        )
+        retrieved = self._retrieve_chapters(facts)
 
         if not retrieved:
             raise HSNoCandidatesFoundError(
@@ -340,29 +353,36 @@ class HSClassificationAgent:
                 "Failed to analyze retrieved HS candidates"
             ) from exc
 
+        if not navigation.candidates:
+            return HSClassificationResult(
+                facts=facts,
+                retrieved=retrieved,
+                navigation=navigation,
+                classification=HSClassificationOutputModel(candidates=[]),
+            )
+
         # --------------------------------------------------
         # Step 4: Classification Analyst
         # --------------------------------------------------
 
         try:
-            chapter_context = self._build_classification_context(
-                navigation.candidates,
+            classification_context = self._build_classification_context(
+                navigation,
                 facts=facts,
-                keywords=keywords,
             )
-            general_rules = [
-                rule.to_dict() for rule in self._client.get_general_rules().rules
-            ]
         except Exception as exc:
             raise HSClassificationPipelineError(
                 "Failed to load HS classification context"
             ) from exc
 
         try:
-            classification = self._classification_analyst(
+            selection = self._classification_analyst(
                 facts,
-                chapter_context,
-                general_rules,
+                classification_context,
+            )
+
+            classification = self._build_classification_result(
+                selection, classification_context
             )
         except Exception as exc:
             raise HSClassificationAnalysisError(
@@ -371,7 +391,6 @@ class HSClassificationAgent:
 
         return HSClassificationResult(
             facts=facts,
-            keywords=keywords,
             retrieved=retrieved,
             navigation=navigation,
             classification=classification,
@@ -435,77 +454,136 @@ class HSClassificationAgent:
 
     def _build_classification_context(
         self,
-        candidates: list[HSResearchCandidateModel],
+        navigation: HSResearchSelectionOutputModel,
         *,
         facts: ProductFactsModel,
-        keywords: list[str],
-    ) -> list[dict]:
-        """Build compact classification context for all shortlisted chapters.
+    ) -> HSClassificationContext:
+        """Build the Classification Analyst context.
 
-        All shortlisted chapters are split into heading-level chunks and indexed
-        together by a single hybrid retriever. Only the globally most relevant
-        ``max_chunks`` chunks are kept across all chapters, which bounds the
-        total Classification Analyst prompt size regardless of how many chapters
-        were shortlisted or how dense they are.
+        Resolves the chapter references selected by the Research Analyst into
+        canonical HS chapter documents, retrieves the most relevant heading
+        hierarchy for each shortlisted chapter, and combines the resulting chapter
+        context with the General Rules for the Interpretation of the Harmonized
+        System (GIR).
 
-        Each shortlisted chapter is guaranteed at least one heading chunk (when
-        it has any headings) so the Research Analyst's shortlisting is
-        respected.
-
-        Chapter notes are always included for every shortlisted chapter,
-        regardless of the retrieved chunks, because they apply to the whole
-        chapter and are required for legal reasoning.
+        The retrieved heading hierarchy is globally ranked across all shortlisted
+        chapters while guaranteeing that each shortlisted chapter contributes at
+        least one heading, when available. Chapter notes are always included because
+        they provide legally binding context for classification.
 
         Args:
-            candidates: Ranked chapter candidates from the Research Analyst.
-            facts: Structured product facts used as the retrieval query.
-            keywords: Retrieval keywords combined with the product description.
+            navigation: Ranked chapter references selected by the Research Analyst.
+            facts: Structured product facts used as the heading retrieval query.
 
         Returns:
-            One classification context dict per candidate, each containing
-            chapter metadata, all chapter notes, and the retrieved heading
-            hierarchy for that chapter.
+            Complete legal and structural context for the Classification Analyst.
         """
 
         chapters = [
-            self._client.get_chapter(candidate.chapter_ref) for candidate in candidates
+            self._client.get_chapter(candidate.chapter_ref)
+            for candidate in navigation.candidates
         ]
 
-        headings_by_chapter = self._retrieve_headings(
-            chapters,
-            description=facts.normalized_description,
-            keywords=keywords,
+        headings_by_chapter = self._retrieve_headings(chapters, facts)
+
+        return HSClassificationContext(
+            general_rules=[
+                rule.to_dict() for rule in self._client.get_general_rules().rules
+            ],
+            chapters=[
+                HSClassificationChapterContext(
+                    chapter_number=chapter.chapter_number,
+                    title=chapter.title,
+                    notes=[note.to_dict() for note in chapter.notes],
+                    headings=[
+                        HSClassificationHeadingContext(
+                            code=heading.code,
+                            description=heading.description,
+                            subheadings=[
+                                HSClassificationSubheadingContext(
+                                    code=subheading.code,
+                                    description=subheading.description,
+                                )
+                                for subheading in heading.subheadings
+                            ],
+                        )
+                        for heading in headings_by_chapter.get(
+                            chapter.chapter_number,
+                            [],
+                        )
+                    ],
+                )
+                for chapter in chapters
+            ],
         )
 
-        return [
-            {
-                "chapter_number": chapter.chapter_number,
-                "title": chapter.title,
-                "notes": [note.to_dict() for note in chapter.notes],
-                "headings": [
-                    heading.to_dict()
-                    for heading in headings_by_chapter.get(chapter.chapter_number, [])
-                ],
-            }
-            for chapter in chapters
-        ]
+    def _build_classification_result(
+        self,
+        selection: HSClassificationSelectionOutputModel,
+        context: HSClassificationContext,
+    ) -> HSClassificationOutputModel:
+        """Build the final HS classification result.
+
+        Resolves the minimal classification candidates produced by the
+        Classification Analyst into the canonical output model by enriching each
+        selected HS code with its description, source chapter, and chapter URL.
+
+        Args:
+            selection: Ranked HS code candidates returned by the Classification
+                Analyst.
+            context: HS classification context used during classification.
+
+        Returns:
+            Hydrated HS classification result.
+        """
+
+        subheadings = {
+            subheading.code: (subheading, heading, chapter)
+            for chapter in context.chapters
+            for heading in chapter.headings
+            for subheading in heading.subheadings
+        }
+
+        candidates: list[HSCodeCandidateModel] = []
+
+        for candidate in selection.candidates:
+            subheading, heading, chapter = subheadings[candidate.code]
+
+            heading_description = heading.description.rstrip(" .:")
+            subheading_description = subheading.description.strip()
+
+            ref = _chapter_ref_from_number(chapter.chapter_number)
+            source_url = chapter_url_from_ref(ref)
+
+            candidates.append(
+                HSCodeCandidateModel(
+                    code=subheading.code,
+                    description=(f"{heading_description} — {subheading_description}"),
+                    score=candidate.confidence,
+                    reasoning=candidate.reasoning,
+                    source_chapter=ref,
+                    source_url=source_url,
+                )
+            )
+
+        return HSClassificationOutputModel(
+            candidates=candidates,
+        )
 
     def _retrieve_chapters(
         self,
-        description: str,
-        *,
-        keywords: list[str],
+        product_facts: ProductFactsModel,
     ) -> list[SearchResult[HSDocumentRef]]:
-        """Retrieve candidate HS chapters for a product description.
+        """Retrieve candidate HS chapters for a product.
 
         Builds the HS navigation retriever inline over the parsed nomenclature
-        tree and searches it with the product description and retrieval
-        keywords. The retriever is constructed on demand rather than held as
+        tree and searches it using the retrieval query derived from the extracted
+        product facts. The retriever is constructed on demand rather than held as
         agent state, since it is only used at this stage of the pipeline.
 
         Args:
-            description: Normalized product description used as the query.
-            keywords: Lexical retrieval keywords combined with the query.
+            product_facts: Structured product facts extracted by the Product
+                Analyst.
 
         Returns:
             Ranked retrieval results whose payloads are HS chapter references.
@@ -533,30 +611,28 @@ class HSClassificationAgent:
         )
 
         return retriever.search(
-            description,
-            keywords=keywords,
+            product_facts.retrieval_query(),
             limit=self._max_retrieved_chapters,
         )
 
     def _retrieve_headings(
         self,
         chapters: list[HSChapter],
-        *,
-        description: str,
-        keywords: list[str],
+        product_facts: ProductFactsModel,
     ) -> dict[int, list[HSHeading]]:
         """Retrieve the most relevant headings across all shortlisted chapters.
 
         A single hybrid retriever is built over the heading chunks of every
-        shortlisted chapter and searched once with the product facts. The
-        retriever returns a global ranking over all chunks. Selection then
-        guarantees one chunk per chapter that has headings (the floor), and
-        fills the remaining budget with the next most relevant chunks overall.
+        shortlisted chapter and searched once using the retrieval query derived
+        from the product facts. The retriever returns a global ranking over all
+        chunks. Selection then guarantees one chunk per chapter that has headings
+        (the floor), and fills the remaining budget with the next most relevant
+        chunks overall.
 
         Args:
             chapters: Parsed shortlisted chapters to search within.
-            description: Normalized product description used as the query.
-            keywords: Retrieval keywords combined with the product description.
+            product_facts: Structured product facts extracted by the Product
+                Analyst.
 
         Returns:
             Mapping of chapter number to the selected headings for that
@@ -571,9 +647,11 @@ class HSClassificationAgent:
             chunks = self._split_chapter_into_chunks(chapter)
             if not chunks:
                 continue
+
             for chunk in chunks:
                 all_chunks.append(chunk)
                 chunk_to_chapter[chunk.id] = chapter.chapter_number
+
             chapters_with_chunks.add(chapter.chapter_number)
 
         if not all_chunks:
@@ -584,9 +662,8 @@ class HSClassificationAgent:
             model_name=self._embedding_model,
         )
 
-        results: list[SearchResult[HSHeading]] = retriever.search(
-            description,
-            keywords=keywords,
+        results = retriever.search(
+            product_facts.retrieval_query(),
             limit=len(all_chunks),
         )
 
@@ -718,56 +795,3 @@ class HSClassificationAgent:
             parts.append(f"{subheading.code} {description}".strip())
 
         return "\n".join(part for part in parts if part)
-
-    @staticmethod
-    def _retrieval_keywords(
-        facts: ProductFactsModel,
-        user_hs_codes: list[str] | None,
-    ) -> list[str]:
-        """Build retrieval keywords from extracted product facts.
-
-        Creates a compact set of lexical retrieval terms for the hybrid retriever.
-        The keywords combine Product Analyst output with selected structured
-        attributes that are likely to improve HS nomenclature matching.
-
-        Included attributes are intentionally limited to high-signal fields:
-        product category, product type, and material. Additional classification
-        hints such as part/component status and user-provided HS codes are included
-        when available.
-
-        Duplicate and empty values are removed while preserving insertion order.
-
-        Args:
-            facts: Structured product facts extracted by the Product Analyst.
-            user_hs_codes: Optional user-provided HS code hints treated as
-                unverified retrieval terms.
-
-        Returns:
-            Ordered list of unique keywords for hybrid retrieval.
-        """
-
-        keywords = list(facts.keywords)
-
-        attributes = facts.main_attributes
-
-        keywords.extend(
-            value
-            for value in [
-                facts.product_category,
-                attributes.product_type,
-                attributes.material,
-            ]
-            if value
-        )
-
-        if attributes.is_part:
-            keywords.append("part")
-
-        if user_hs_codes:
-            keywords.extend(user_hs_codes)
-
-        return list(
-            dict.fromkeys(
-                keyword.strip() for keyword in keywords if keyword and keyword.strip()
-            )
-        )

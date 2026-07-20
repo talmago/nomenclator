@@ -1,77 +1,77 @@
 import dspy
 
-from nomenclator.models.classification import HSClassificationOutputModel
+from nomenclator.models.classification import (
+    HSClassificationContext,
+    HSClassificationSelectionOutputModel,
+)
 from nomenclator.models.product_facts import ProductFactsModel
 
 
 class ClassificationAnalystSignature(dspy.Signature):
-    """Classify products according to the Harmonized System nomenclature.
+    """Classify products according to the Harmonized System (HS 2022).
 
     You are a Customs Specialist with expertise in HS classification.
 
-    Determine the most appropriate HS 6-digit subheading using the product
-    facts and relevant HS chapter information.
+    Determine the most appropriate 6-digit HS subheading using the structured
+    product facts and the provided HS classification context.
 
-    The provided chapters and headings were selected by previous retrieval and
-    research stages. They represent possible classification pathways, not
-    confirmed classifications.
+    The Research Analyst has already narrowed the search space. The provided
+    context contains the best available classification pathways and is expected
+    to include at least one applicable HS subheading.
+
+    The context contains:
+
+    - the General Rules for the Interpretation of the Harmonized System (GIR);
+    - shortlisted chapters;
+    - chapter notes;
+    - relevant headings and 6-digit subheadings.
+
+    Your task is to evaluate the HS subheadings in the provided context and rank
+    them according to how well they classify the product.
 
     You must:
-    - Analyze the product facts together with the provided HS context.
-    - Identify the correct heading and 6-digit subheading.
-    - Use chapter notes and heading descriptions as primary evidence for scope
-      and coverage.
-    - Apply the provided General Rules for the Interpretation of the
-      Harmonized System (GIR) when resolving conflicts, incomplete or
-      unfinished goods, mixtures, composite goods, and packing.
-    - Prefer specific classifications over general headings.
-    - Compare genuinely plausible competing classifications.
-    - Explain why each candidate is supported and why the preferred candidate
-      ranks above the alternatives.
-    - Cite relevant GIR rules when they affect the decision.
 
-    You must not:
-    - Return chapter numbers or 4-digit headings as final classifications.
-    - Classify based only on keyword similarity.
-    - Assume the highest-ranked retrieved chapter is correct.
-    - Ignore exclusions, legal notes, or applicable GIR rules.
-    - Include weakly supported or speculative alternatives.
+    - Select a primary 6-digit HS code from the provided context.
+    - Base the classification on the product facts and the legal scope of the
+      provided headings, subheadings, and notes.
+    - Consider the product's nature, function, material, composition, and
+      essential character where relevant.
+    - Apply the GIR when they affect the classification.
+    - Prefer the most specific applicable subheading.
+    - Compare competing pathways when more than one classification is
+      reasonably supported.
+    - Explain why the primary candidate is preferred over any alternatives.
 
-    Scoring:
-    - Assign each candidate a confidence score between 0.0 and 1.0.
-    - Scores must reflect relative confidence and must not exceed that range.
+    Every returned code must exactly match a 6-digit HS subheading present in
+    the provided classification context.
 
     Output:
-    - Return ranked 6-digit HS subheading candidates.
-    - Return the strongest supported classification first.
-    - Include additional candidates only when a meaningful competing
-      classification remains plausible.
-    - Return a single candidate when the classification is unambiguous.
-    - Include concise legal reasoning for each candidate.
+
+    - Return at least one ranked candidate.
+    - Return the strongest supported candidate first.
+    - Include additional candidates only when another classification is
+      reasonably supported by the product facts and HS context.
+    - Return a single candidate when one classification is clearly preferred.
+    - Assign each candidate a confidence score between 0.0 and 1.0.
+    - Include concise classification reasoning for each candidate.
     """
 
     product_facts: ProductFactsModel = dspy.InputField(
         desc="Structured product facts extracted from the product description."
     )
 
-    general_rules: list[dict] = dspy.InputField(
+    context: HSClassificationContext = dspy.InputField(
         desc=(
-            "General Rules for the Interpretation of the Harmonized System "
-            "(GIR). Each entry contains the rule identifier and full text."
+            "HS classification context containing the General Rules for the "
+            "Interpretation of the Harmonized System (GIR), shortlisted "
+            "chapters, legal notes, headings, and candidate subheadings."
         )
     )
 
-    chapter_context: list[dict] = dspy.InputField(
+    classification: HSClassificationSelectionOutputModel = dspy.OutputField(
         desc=(
-            "Relevant HS chapter context containing chapter metadata, legal "
-            "notes, and the retrieved heading hierarchy."
-        )
-    )
-
-    classification: HSClassificationOutputModel = dspy.OutputField(
-        desc=(
-            "Ranked 6-digit HS subheading candidates with concise legal "
-            "reasoning and confidence scores between 0.0 and 1.0."
+            "Ranked 6-digit HS subheading references with confidence scores "
+            "and concise legal reasoning."
         )
     )
 
@@ -91,27 +91,24 @@ class ClassificationAnalyst(dspy.Module):
     def forward(
         self,
         product_facts: ProductFactsModel,
-        chapter_context: list[dict],
-        general_rules: list[dict],
-    ) -> HSClassificationOutputModel:
+        context: HSClassificationContext,
+    ) -> HSClassificationSelectionOutputModel:
         """Classify a product.
 
         Args:
             product_facts: Structured product facts extracted from the product
                 description.
-            chapter_context: Relevant HS chapter context including notes and
-                heading hierarchy.
-            general_rules: Compact GIR entries (rule id + text) used for legal
-                interpretation.
+            context: HS classification context containing the General Rules for
+                the Interpretation of the Harmonized System (GIR), shortlisted
+                chapters, legal notes, headings, and candidate subheadings.
 
         Returns:
-            Ranked 6-digit HS code candidates.
+            Ranked 6-digit HS subheading candidates.
         """
 
         result = self.classify(
             product_facts=product_facts,
-            chapter_context=chapter_context,
-            general_rules=general_rules,
+            context=context,
         )
 
         return result.classification

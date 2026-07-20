@@ -24,19 +24,13 @@ class HSResearchContext(BaseModel):
     sections: list[HSResearchSectionContext]
 
 
-class HSResearchCandidateModel(BaseModel):
-    """HS chapter pathway identified by the Research Analyst."""
+class HSResearchSelectionModel(BaseModel):
+    """Minimal chapter selection produced by the Research Analyst."""
 
-    section_id: str
-    section_title: str
     chapter_ref: str
-    chapter_title: str
-
-    score: float
-    reason: list[str]
 
 
-class HSResearchOutputModel(BaseModel):
-    """Ranked HS chapter pathways produced by the Research Analyst."""
+class HSResearchSelectionOutputModel(BaseModel):
+    """Minimal structured output produced by the Research Analyst."""
 
-    candidates: list[HSResearchCandidateModel]
+    candidates: list[HSResearchSelectionModel]

@@ -15,9 +15,15 @@ from nomenclator.exceptions import (
     HSNoCandidatesFoundError,
 )
 from nomenclator.models.classification import (
-    HSClassificationOutputModel,
+    HSClassificationSelectionModel,
+    HSClassificationSelectionOutputModel,
     HSCodeCandidateModel,
 )
+from nomenclator.models.navigation import (
+    HSResearchSelectionModel,
+    HSResearchSelectionOutputModel,
+)
+from nomenclator.models.product_facts import MainAttributesModel, ProductFactsModel
 from nomenclator.nomenclature.rules import HSGeneralRules
 
 
@@ -42,44 +48,54 @@ def test_agent_runs_complete_pipeline(
     agent: HSClassificationAgent,
     general_rules: HSGeneralRules,
     chapter_mock,
-    heading_mock,
     patch_candidate_chapters,
     patch_headings,
 ) -> None:
-    """Classification should pass data through all pipeline stages."""
+    """Classification should execute the full pipeline and hydrate the final result."""
 
-    facts = MagicMock()
-
-    facts.normalized_description = "lithium battery pack"
-    facts.keywords = ["battery"]
-
-    facts.product_category = None
-
-    facts.main_attributes.product_type = "battery pack"
-    facts.main_attributes.material = "lithium"
-    facts.main_attributes.is_part = True
+    # Product Analyst
+    facts = ProductFactsModel(
+        raw_description="lithium ion battery pack",
+        normalized_description="lithium battery pack",
+        product_category="electrical equipment",
+        main_attributes=MainAttributesModel(
+            product_type="battery pack",
+            material="lithium",
+            is_part=True,
+        ),
+        keywords=[
+            "battery",
+            "battery pack",
+            "lithium-ion battery",
+            "electric accumulator",
+            "electrical equipment",
+        ],
+        hints=[],
+    )
 
     agent._product_analyst = MagicMock(
         return_value=facts,
     )
 
+    # Retriever
     retrieved = [MagicMock()]
-
     research_context = MagicMock()
 
     agent._build_research_context = MagicMock(
         return_value=research_context,
     )
 
-    navigation = MagicMock()
-    navigation.candidates = [
-        MagicMock(chapter_ref="85"),
-    ]
-
-    agent._research_analyst = MagicMock(
-        return_value=navigation,
+    navigation = HSResearchSelectionOutputModel(
+        candidates=[
+            HSResearchSelectionModel(
+                chapter_ref="85",
+            )
+        ]
     )
 
+    agent._research_analyst = MagicMock(return_value=navigation)
+
+    # Chapter lookup
     chapter = chapter_mock(
         chapter_number=85,
         ref="8501-2022E",
@@ -87,76 +103,92 @@ def test_agent_runs_complete_pipeline(
 
     agent._client.get_chapter.return_value = chapter
 
-    heading = heading_mock({"code": "8507", "description": "Electric accumulators"})
-
-    expected = HSClassificationOutputModel(
-        candidates=[
-            HSCodeCandidateModel(
+    # Headings returned by retrieval
+    heading = MagicMock(
+        code="8507",
+        description="Electric accumulators",
+        subheadings=[
+            MagicMock(
                 code="8507.60",
                 description="Lithium-ion accumulators",
-                score=0.9,
+            )
+        ],
+    )
+
+    # Classification Analyst
+    selection = HSClassificationSelectionOutputModel(
+        candidates=[
+            HSClassificationSelectionModel(
+                code="8507.60",
+                confidence=0.9,
                 reasoning=[
                     "The product is a lithium-ion battery pack.",
                 ],
-                source_chapter="85",
             )
         ]
     )
 
-    agent._classification_analyst = MagicMock(
-        return_value=expected,
-    )
+    agent._classification_analyst = MagicMock(return_value=selection)
 
     with (
         patch_candidate_chapters(retrieved) as retrieve,
         patch_headings({85: [heading]}),
     ):
-        result = agent.classify(
-            "lithium ion battery pack",
-        )
+        result = agent.classify("lithium ion battery pack")
 
-    assert result.classification is expected
+    expected = HSCodeCandidateModel(
+        code="8507.60",
+        description="Electric accumulators — Lithium-ion accumulators",
+        score=0.9,
+        reasoning=[
+            "The product is a lithium-ion battery pack.",
+        ],
+        source_chapter="8501-2022E",
+        source_url=(
+            "https://www.wcoomd.org/-/media/wco/public/global/pdf/topics/"
+            "nomenclature/instruments-and-tools/hs-nomenclature-2022/2022/"
+            "8501_2022e.pdf?la=en"
+        ),
+    )
+
     assert isinstance(result, HSClassificationResult)
+
     assert result.facts is facts
     assert result.retrieved is retrieved
     assert result.navigation is navigation
-    assert result.candidates == expected.candidates
 
-    retrieve.assert_called_once_with(
-        "lithium battery pack",
-        keywords=[
-            "battery",
-            "battery pack",
-            "lithium",
-            "part",
-        ],
-    )
+    assert result.classification.candidates == [expected]
+    assert result.candidates == [expected]
 
-    agent._client.get_chapter.assert_called_once_with(
-        "85",
-    )
+    retrieve.assert_called_once_with(facts)
 
-    agent._classification_analyst.assert_called_once()
+    agent._client.get_chapter.assert_called_once_with("85")
     agent._client.get_general_rules.assert_called_once()
+    agent._classification_analyst.assert_called_once()
 
-    (classification_call,) = agent._classification_analyst.call_args_list
-    (
-        _facts_arg,
-        chapter_context_arg,
-        general_rules_arg,
-    ) = classification_call.args
+    facts_arg, context = agent._classification_analyst.call_args.args
 
-    assert chapter_context_arg == [
-        {
-            "chapter_number": 85,
-            "title": "Electrical machinery and equipment",
-            "notes": [],
-            "headings": [
-                {"code": "8507", "description": "Electric accumulators"},
-            ],
-        }
-    ]
-    assert general_rules_arg == [rule.to_dict() for rule in general_rules.rules]
+    assert facts_arg is facts
+
+    assert context.general_rules == [rule.to_dict() for rule in general_rules.rules]
+
+    assert len(context.chapters) == 1
+
+    chapter = context.chapters[0]
+    assert chapter.chapter_number == 85
+    assert chapter.title == "Electrical machinery and equipment"
+
+    assert len(chapter.headings) == 1
+
+    heading = chapter.headings[0]
+    assert heading.code == "8507"
+    assert heading.description == "Electric accumulators"
+
+    assert len(heading.subheadings) == 1
+
+    subheading = heading.subheadings[0]
+    assert subheading.code == "8507.60"
+    assert subheading.description == "Lithium-ion accumulators"
 
 
 def test_agent_raises_no_candidates(agent, patch_candidate_chapters) -> None:
@@ -298,12 +330,14 @@ def test_agent_wraps_research_analysis_failure(agent, patch_candidate_chapters) 
 
 
 def test_agent_wraps_classification_failure(
-    agent, chapter_mock, heading_mock, patch_candidate_chapters, patch_headings
+    agent,
+    chapter_mock,
+    patch_candidate_chapters,
+    patch_headings,
 ) -> None:
     """Classification failures should be wrapped."""
 
     facts = MagicMock()
-
     facts.normalized_description = "lithium battery pack"
     facts.keywords = []
 
@@ -312,7 +346,9 @@ def test_agent_wraps_classification_failure(
     facts.main_attributes.material = ""
     facts.main_attributes.is_part = False
 
-    agent._product_analyst.return_value = facts
+    agent._product_analyst = MagicMock(
+        return_value=facts,
+    )
 
     retrieved = [MagicMock()]
 
@@ -322,12 +358,17 @@ def test_agent_wraps_classification_failure(
         return_value=research_context,
     )
 
-    navigation = MagicMock()
-    navigation.candidates = [
-        MagicMock(chapter_ref="85"),
-    ]
+    navigation = HSResearchSelectionOutputModel(
+        candidates=[
+            HSResearchSelectionModel(
+                chapter_ref="85",
+            )
+        ]
+    )
 
-    agent._research_analyst.return_value = navigation
+    agent._research_analyst = MagicMock(
+        return_value=navigation,
+    )
 
     chapter = chapter_mock(
         chapter_number=85,
@@ -336,18 +377,22 @@ def test_agent_wraps_classification_failure(
 
     agent._client.get_chapter.return_value = chapter
 
-    agent._classification_analyst.side_effect = RuntimeError(
-        "LLM unavailable",
+    heading = MagicMock(
+        code="8507",
+        description="Electric accumulators",
+        subheadings=[],
+    )
+
+    agent._classification_analyst = MagicMock(
+        side_effect=RuntimeError("LLM unavailable"),
     )
 
     with (
         patch_candidate_chapters(retrieved),
-        patch_headings({85: [heading_mock({"chapter_number": 85})]}),
+        patch_headings({85: [heading]}),
         pytest.raises(HSClassificationAnalysisError) as exc_info,
     ):
-        agent.classify(
-            "lithium battery pack",
-        )
+        agent.classify("lithium battery pack")
 
     assert "Failed to produce HS classification candidates" in str(exc_info.value)
 
@@ -358,7 +403,6 @@ def test_agent_wraps_classification_failure(
 def test_agent_loads_only_selected_chapters(
     agent,
     chapter_mock,
-    heading_mock,
     patch_candidate_chapters,
     patch_headings,
 ) -> None:
@@ -374,7 +418,9 @@ def test_agent_loads_only_selected_chapters(
     facts.main_attributes.material = ""
     facts.main_attributes.is_part = False
 
-    agent._product_analyst.return_value = facts
+    agent._product_analyst = MagicMock(
+        return_value=facts,
+    )
 
     # Pretend retrieval found many candidate chapters.
     retrieved = [MagicMock() for _ in range(5)]
@@ -386,13 +432,16 @@ def test_agent_loads_only_selected_chapters(
     )
 
     # Research keeps only two.
-    navigation = MagicMock()
-    navigation.candidates = [
-        MagicMock(chapter_ref="84"),
-        MagicMock(chapter_ref="85"),
-    ]
+    navigation = HSResearchSelectionOutputModel(
+        candidates=[
+            HSResearchSelectionModel(chapter_ref="84"),
+            HSResearchSelectionModel(chapter_ref="85"),
+        ]
+    )
 
-    agent._research_analyst.return_value = navigation
+    agent._research_analyst = MagicMock(
+        return_value=navigation,
+    )
 
     chapter = chapter_mock(
         ref="8501-2022E",
@@ -400,21 +449,29 @@ def test_agent_loads_only_selected_chapters(
 
     agent._client.get_chapter.return_value = chapter
 
-    expected = HSClassificationOutputModel(
+    heading = MagicMock(
+        code="8507",
+        description="Electric accumulators",
+        subheadings=[],
+    )
+
+    selection = HSClassificationSelectionOutputModel(
         candidates=[],
     )
 
-    agent._classification_analyst.return_value = expected
+    agent._classification_analyst = MagicMock(
+        return_value=selection,
+    )
 
     with (
         patch_candidate_chapters(retrieved),
-        patch_headings({85: [heading_mock({})]}),
+        patch_headings({84: [heading], 85: [heading]}),
     ):
         result = agent.classify(
             "lithium battery pack",
         )
 
-    assert result.classification is expected
+    assert result.classification.candidates == []
 
     assert agent._client.get_chapter.call_count == 2
 

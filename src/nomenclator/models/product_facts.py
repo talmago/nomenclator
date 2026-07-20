@@ -17,12 +17,11 @@ class MainAttributesModel(BaseModel):
     product_type: str | None = None
     function: str | None = None
     material: str | None = None
-    power_source: str | None = None
     is_part: bool | None = None
 
 
 class ProductFactsModel(BaseModel):
-    """Structured product facts extracted from free-text description."""
+    """Structured product facts extracted from a free-text description."""
 
     raw_description: str
     normalized_description: str
@@ -30,3 +29,28 @@ class ProductFactsModel(BaseModel):
     main_attributes: MainAttributesModel
     keywords: list[str]
     hints: list[UserHSHintModel]
+
+    def retrieval_query(self) -> str:
+        """Build a query for HS nomenclature retrieval."""
+
+        terms = [
+            self.normalized_description,
+            self.product_category,
+            self.main_attributes.product_type,
+            *self.keywords,
+        ]
+
+        sections = [
+            term.strip() for term in dict.fromkeys(terms) if term and term.strip()
+        ]
+
+        if self.hints:
+            hints = ", ".join(
+                dict.fromkeys(
+                    hint.code.strip() for hint in self.hints if hint.code.strip()
+                )
+            )
+            if hints:
+                sections.append(f"HS hints: {hints}")
+
+        return "\n".join(sections)

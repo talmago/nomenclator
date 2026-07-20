@@ -517,7 +517,7 @@ def clean_pdf_line(line: str) -> str:
 
 
 def _chapter_ref_from_number(chapter_number: int) -> str:
-    return f"{chapter_number:02d}{chapter_number:02d}-2022E"
+    return f"{chapter_number:02d}01-2022E"
 
 
 def _split_abbreviation_line(line: str) -> tuple[str, str] | None:

@@ -1,70 +1,17 @@
 from unittest.mock import MagicMock, patch
 
 from nomenclator.agent import HSClassificationAgent
-from nomenclator.models.classification import HSClassificationOutputModel
-from nomenclator.nomenclature.rules import HSGeneralRules
+from nomenclator.models.classification import (
+    HSClassificationSelectionOutputModel,
+)
+from nomenclator.models.navigation import (
+    HSResearchSelectionModel,
+    HSResearchSelectionOutputModel,
+)
 from nomenclator.nomenclature.tree import HSDocumentRef, HSSection
 
 
-def _heading_mock(heading_dict: dict) -> MagicMock:
-    """Build a mocked HSHeading whose to_dict returns ``heading_dict``."""
-
-    heading = MagicMock()
-    heading.to_dict.return_value = heading_dict
-    return heading
-
-
-def _mock_chapter(
-    *,
-    chapter_number: int = 85,
-    title: str = "Electrical machinery and equipment",
-    ref: str = "8501-2022E",
-    notes: list | None = None,
-) -> MagicMock:
-    """Build a mocked HSChapter."""
-
-    chapter = MagicMock()
-    chapter.chapter_number = chapter_number
-    chapter.title = title
-    chapter.document.ref = ref
-    chapter.notes = notes if notes is not None else []
-    chapter.headings = []
-    return chapter
-
-
-def _patch_candidate_chapters(retrieved: list):
-    """Patch ``_retrieve_chapters`` to return ``retrieved``.
-
-    Returns the patch context manager so callers can assert on the call
-    (description and keywords).
-    """
-
-    return patch.object(
-        HSClassificationAgent,
-        "_retrieve_chapters",
-        return_value=retrieved,
-    )
-
-
-def _patch_headings(
-    headings_by_chapter: dict[int, list[MagicMock]],
-):
-    """Patch ``_retrieve_headings`` to return a fixed mapping.
-
-    The mapping keys are chapter numbers and values are the heading mocks that
-    should appear in that chapter's classification context.
-    """
-
-    return patch.object(
-        HSClassificationAgent,
-        "_retrieve_headings",
-        return_value=headings_by_chapter,
-    )
-
-
-def test_build_research_context_groups_chapters_by_section(
-    agent: HSClassificationAgent,
-) -> None:
+def test_build_research_context_groups_chapters_by_section(agent) -> None:
     """Retrieved chapters from the same section should share one section context."""
 
     chapter_84 = HSDocumentRef(
@@ -204,10 +151,13 @@ def test_build_research_context_multiple_sections(
 
 
 def test_classification_context_always_includes_chapter_notes(
-    agent: HSClassificationAgent,
-    general_rules: HSGeneralRules,
+    agent,
+    general_rules,
+    chapter_mock,
+    patch_candidate_chapters,
+    patch_headings,
 ) -> None:
-    """Chapter notes should be included regardless of retrieved chunks."""
+    """Chapter notes should be included regardless of retrieved headings."""
 
     facts = MagicMock()
     facts.normalized_description = "lithium battery pack"
@@ -218,19 +168,33 @@ def test_classification_context_always_includes_chapter_notes(
     facts.main_attributes.material = ""
     facts.main_attributes.is_part = False
 
-    agent._product_analyst.return_value = facts
+    agent._product_analyst = MagicMock(
+        return_value=facts,
+    )
 
-    agent._build_research_context = MagicMock(return_value=MagicMock())
+    agent._build_research_context = MagicMock(
+        return_value=MagicMock(),
+    )
 
-    navigation = MagicMock()
-    navigation.candidates = [MagicMock(chapter_ref="85")]
+    navigation = HSResearchSelectionOutputModel(
+        candidates=[
+            HSResearchSelectionModel(
+                chapter_ref="85",
+            )
+        ]
+    )
 
-    agent._research_analyst.return_value = navigation
+    agent._research_analyst = MagicMock(
+        return_value=navigation,
+    )
 
     note = MagicMock()
-    note.to_dict.return_value = {"number": "1", "intro": "Chapter note"}
+    note.to_dict.return_value = {
+        "number": "1",
+        "intro": "Chapter note",
+    }
 
-    chapter = _mock_chapter(
+    chapter = chapter_mock(
         chapter_number=85,
         ref="8501-2022E",
         notes=[note],
@@ -238,37 +202,51 @@ def test_classification_context_always_includes_chapter_notes(
 
     agent._client.get_chapter.return_value = chapter
 
-    heading = _heading_mock({"code": "8507", "description": "Electric accumulators"})
-
-    agent._classification_analyst.return_value = HSClassificationOutputModel(
-        candidates=[],
+    heading = MagicMock(
+        code="8507",
+        description="Electric accumulators",
+        subheadings=[],
     )
 
-    with _patch_candidate_chapters([MagicMock()]), _patch_headings({85: [heading]}):
+    agent._classification_analyst = MagicMock(
+        return_value=HSClassificationSelectionOutputModel(
+            candidates=[],
+        ),
+    )
+
+    with (
+        patch_candidate_chapters([MagicMock()]),
+        patch_headings({85: [heading]}),
+    ):
         agent.classify("lithium battery pack")
 
-    (
-        _,
-        chapter_context_arg,
-        general_rules_arg,
-    ) = agent._classification_analyst.call_args.args
+    _, context_arg = agent._classification_analyst.call_args.args
 
-    assert chapter_context_arg == [
+    assert context_arg.general_rules == [rule.to_dict() for rule in general_rules.rules]
+
+    assert len(context_arg.chapters) == 1
+
+    chapter = context_arg.chapters[0]
+
+    assert chapter.chapter_number == 85
+    assert chapter.title == "Electrical machinery and equipment"
+    assert chapter.notes == [
         {
-            "chapter_number": 85,
-            "title": "Electrical machinery and equipment",
-            "notes": [{"number": "1", "intro": "Chapter note"}],
-            "headings": [
-                {"code": "8507", "description": "Electric accumulators"},
-            ],
+            "number": "1",
+            "intro": "Chapter note",
         }
     ]
-    assert general_rules_arg == [rule.to_dict() for rule in general_rules.rules]
+
+    assert len(chapter.headings) == 1
+
+    heading = chapter.headings[0]
+    assert heading.code == "8507"
+    assert heading.description == "Electric accumulators"
+    assert heading.subheadings == []
 
 
 def test_classification_context_handles_chapter_without_headings(
-    agent: HSClassificationAgent,
-    general_rules: HSGeneralRules,
+    agent, general_rules, chapter_mock, patch_candidate_chapters
 ) -> None:
     """A chapter with no headings should yield context with empty headings."""
 
@@ -293,7 +271,7 @@ def test_classification_context_handles_chapter_without_headings(
     note = MagicMock()
     note.to_dict.return_value = {"number": "1", "intro": "Note"}
 
-    chapter = _mock_chapter(
+    chapter = chapter_mock(
         chapter_number=99,
         ref="9901-2022E",
         notes=[note],
@@ -301,13 +279,13 @@ def test_classification_context_handles_chapter_without_headings(
 
     agent._client.get_chapter.return_value = chapter
 
-    agent._classification_analyst.return_value = HSClassificationOutputModel(
+    agent._classification_analyst.return_value = HSClassificationSelectionOutputModel(
         candidates=[],
     )
 
-    # No chunks for chapter 99, so the retriever is never built.
+    # No headings are retrieved for chapter 99.
     with (
-        _patch_candidate_chapters([MagicMock()]),
+        patch_candidate_chapters([MagicMock()]),
         patch.object(
             HSClassificationAgent,
             "_retrieve_headings",
@@ -318,18 +296,15 @@ def test_classification_context_handles_chapter_without_headings(
 
     retrieve_headings.assert_called_once()
 
-    (
-        _,
-        chapter_context_arg,
-        general_rules_arg,
-    ) = agent._classification_analyst.call_args.args
+    (_, context_arg) = agent._classification_analyst.call_args.args
 
-    assert chapter_context_arg == [
-        {
-            "chapter_number": 99,
-            "title": "Electrical machinery and equipment",
-            "notes": [{"number": "1", "intro": "Note"}],
-            "headings": [],
-        }
-    ]
-    assert general_rules_arg == [rule.to_dict() for rule in general_rules.rules]
+    assert context_arg.general_rules == [rule.to_dict() for rule in general_rules.rules]
+
+    assert len(context_arg.chapters) == 1
+
+    chapter = context_arg.chapters[0]
+
+    assert chapter.chapter_number == 99
+    assert chapter.title == "Electrical machinery and equipment"
+    assert chapter.notes == [{"number": "1", "intro": "Note"}]
+    assert chapter.headings == []

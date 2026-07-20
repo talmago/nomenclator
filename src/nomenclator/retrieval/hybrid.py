@@ -43,7 +43,7 @@ access, document parsing, or application-specific reasoning.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable
 from dataclasses import dataclass
 import re
 from typing import TypeVar
@@ -175,26 +175,24 @@ class Retriever[T]:
 
     def search(
         self,
-        description: str,
+        query: str,
         *,
-        keywords: Sequence[str] | None = None,
         limit: int = 10,
     ) -> list[SearchResult[T]]:
         """Search the indexed documents.
 
         Args:
-            description: Primary search query.
-            keywords: Optional additional search keywords.
+            query: Retrieval query.
             limit: Maximum number of results to return.
 
         Returns:
             Ranked search results.
         """
 
-        query = self._build_query(
-            description,
-            list(keywords) if keywords is not None else None,
-        )
+        query = query.strip()
+
+        if not query:
+            return []
 
         candidate_count = limit * 5
 

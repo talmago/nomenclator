@@ -33,15 +33,13 @@ import dspy
 
 from nomenclator import HSClassificationAgent, calc_usage
 
+# Configure DSPy
+lm = dspy.LM("openai/gpt-4.1-mini")
+dspy.configure(lm=lm)
 
 def main() -> None:
     """Run a simple HS classification example."""
 
-    # Configure DSPy
-    lm = dspy.LM("openai/gpt-4.1-mini")
-    dspy.configure(lm=lm)
-
-    # Initialize the classifier
     agent = HSClassificationAgent()
 
     queries = [
@@ -83,70 +81,91 @@ Example output:
 ```text
 Top classification candidates:
 
-1. 6105.10 — Men's or boys' shirts, knitted or crocheted, of cotton
+1. 8507.60 — Electric accumulators, including separators therefor, whether or not rectangular (including square) — Lithium-ion
    Score: 1.00
-   Source chapter: 61
+   Source chapter: 8585-2022E
    Reasoning:
-     • Product is men's knitted shirts made of cotton, matching heading 61.05 for men's knitted shirts.
-     • Subheading 6105.10 specifies cotton material which corresponds exactly to the product's material.
-     • Chapter 61 applies only to made up knitted or crocheted articles per Chapter Note 1.
-     • Chapter 62 covers non-knitted apparel and is therefore not applicable.
-     • GIR Rules 1 and 3 favor the most specific accurate classification.
-     • No exclusion or other heading conflicts were identified.
+     • Product is a lithium-ion rechargeable battery, an electric accumulator.
+     • Heading 85.07 covers electric accumulators; 8507.60 specifically covers lithium-ion accumulators.
+     • No other heading offers a more specific or appropriate classification.
+     • GIR 3(a) favors the most specific applicable heading, which is 8507.60.
 
 Token usage
-  Prompt tokens:     6,680
-  Completion tokens: 589
-  Total tokens:      7,269
-  Estimated cost:    $0.00924
+  Prompt tokens:     15,406
+  Completion tokens: 530
+  Total tokens:      15,936
+  Estimated cost:    $0.00701
 ```
 
-## How it works?
+## How it works
 
 ```
 Q: "Men's cotton knitted shirts"
         │
         ▼
-┌─ Product Analyst ─────────────────────────────────────┐
-│  normalized: "men's cotton knitted shirts"            │
-│  category:   apparel                                  │
-│  attrs:      type=shirt · material=cotton · knit      │
-│  keywords:   [men's shirts, cotton, knitted, apparel] │
-└───────────────────────────┬───────────────────────────┘
-                            │
-                            ▼
-┌─ Nomenclature Retriever (1st retrieval) ──────────────┐
-│  hybrid search → candidate chapters                   │
-│    ch.61  Articles of apparel, knitted or crocheted   │
-│    ch.62  Articles of apparel, not knitted…           │
-│    …                                                  │
-└───────────────────────────┬───────────────────────────┘
-                            │
-                            ▼
-┌─ Research Analyst ────────────────────────────────────┐
-│  ranked pathways                                      │
-│    1. ch.61  (knitted apparel — primary)              │
-│    2. ch.62  (woven apparel — secondary / contrast)   │
-└───────────────────────────┬───────────────────────────┘
-                            │
-                            ▼
-┌─ Classification Context Builder (2nd retrieval) ──────┐
-│  hybrid search over heading chunks → compact context  │
-│    ch.61  notes + 61.05 → 6105.10 (knitted, cotton)   │
-│    ch.62  notes + 62.05 → 6205.20 (woven, cotton)     │
-└───────────────────────────┬───────────────────────────┘
-                            │
-              ┌─────────────┴─────────────┐
-              │  + GIR rules (fixed size) │
-              └─────────────┬─────────────┘
-                            ▼
-┌─ Classification Analyst ──────────────────────────────┐
-│  apply chapter notes/headings + GIR                   │
-│  1. 6105.10  Men's or boys' shirts, knitted, of cotton│
-│     score 1.00 · chapter 61                           │
-│  2. 6205.20  Men's or boys' shirts of cotton          │
-│     score 0.30 · chapter 62                           │
-└───────────────────────────────────────────────────────┘
+┌─ Product Analyst ──────────────────────────────────────────────┐
+│  normalized: men's cotton knitted shirts                      │
+│  category:   textile apparel                                  │
+│  attrs:      type=shirt · material=cotton · knit              │
+│  keywords:                                                    │
+│    • cotton shirt                                             │
+│    • knitted shirt                                            │
+│    • knitted apparel                                          │
+│    • textile apparel                                          │
+│    • garments                                                 │
+└────────────────────────────┬───────────────────────────────────┘
+                             │
+                             ▼
+┌─ Chapter Retriever (1st retrieval) ────────────────────────────┐
+│  hybrid search over HS chapters                               │
+│                                                               │
+│    Ch.61  Articles of apparel, knitted or crocheted           │
+│    Ch.62  Articles of apparel, not knitted or crocheted       │
+│    …                                                          │
+└────────────────────────────┬───────────────────────────────────┘
+                             │
+                             ▼
+┌─ Research Analyst ─────────────────────────────────────────────┐
+│  analyze candidate chapters                                   │
+│                                                               │
+│    1. Ch.61  Primary pathway                                  │
+│    2. Ch.62  Alternative pathway                              │
+└────────────────────────────┬───────────────────────────────────┘
+                             │
+                             ▼
+┌─ Heading Retriever (2nd retrieval) ────────────────────────────┐
+│  hybrid search over heading chunks                            │
+│                                                               │
+│    Ch.61  61.05 → 6105.10                                     │
+│    Ch.62  62.05 → 6205.20                                     │
+│    chapter notes + heading context                            │
+└────────────────────────────┬───────────────────────────────────┘
+                             │
+                 ┌───────────┴───────────┐
+                 │  GIR Rules (fixed)    │
+                 └───────────┬───────────┘
+                             ▼
+┌─ Classification Analyst ───────────────────────────────────────┐
+│  rank HS classification candidates                            │
+│                                                               │
+│  1. 6105.10  Men's or boys' shirts, knitted, of cotton        │
+│     score 1.00                                                │
+│                                                               │
+│  2. 6205.20  Men's or boys' shirts, of cotton                 │
+│     score 0.30                                                │
+└────────────────────────────┬───────────────────────────────────┘
+                             │
+                             ▼
+┌─ Classification Result ────────────────────────────────────────┐
+│  ✓ Selected: 6105.10                                          │
+│                                                               │
+│  Confidence: High                                             │
+│  Alternatives: 6205.20                                        │
+│  Reasoning:                                                    │
+│    • Product is a knitted cotton shirt.                       │
+│    • Chapter 61 is more specific than Chapter 62.             │
+│    • GIR 3(a) favors the most specific heading.               │
+└───────────────────────────────────────────────────────────────┘
 ```
 
 ## Development
@@ -173,6 +192,8 @@ poe test         # Execute the unit test suite
 poe integration  # Execute the integration test suite
 poe check        # Run linting, type checking, and unit tests
 ```
+
+> Coding agents working in this repository follow the rules described in [`AGENTS.md`](./AGENTS.md)
 
 ## Architecture
 
